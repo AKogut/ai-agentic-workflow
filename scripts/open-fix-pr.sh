@@ -56,12 +56,8 @@ else
   [ "$workflows" = false ] || die "the fix changes no workflow: drop --workflows"
 fi
 
-command -v gitleaks >/dev/null || die "gitleaks is not installed, so the fix cannot be scanned for secrets"
-if ! report="$({ git -C "$worktree" diff --cached --unified=0 HEAD; cat "$text"; } |
-  gitleaks stdin --no-banner --redact --config "$KOGUT_ROOT/.gitleaks.toml" 2>&1)"; then
-  printf '%s\n' "$report" >&2
+{ git -C "$worktree" diff --cached --unified=0 HEAD; cat "$text"; } | kogut_scan ||
   die "gitleaks flagged the fix; nothing was sent"
-fi
 
 full="$(kogut_owner)/$repo"
 base_branch="$(kogut_default_branch "$repo")"

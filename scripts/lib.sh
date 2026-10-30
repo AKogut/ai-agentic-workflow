@@ -47,6 +47,18 @@ kogut_default_branch() {
   echo "$branch"
 }
 
+# Scans text on stdin with gitleaks and this project's rules. Prints the
+# redacted report and fails when it finds a secret, so nothing kogut writes on
+# GitHub can carry one.
+kogut_scan() {
+  local report
+  command -v gitleaks >/dev/null || die "gitleaks is not installed, so nothing can be scanned for secrets"
+  if ! report="$(gitleaks stdin --no-banner --redact --config "$KOGUT_ROOT/.gitleaks.toml" 2>&1)"; then
+    printf '%s\n' "$report" >&2
+    return 1
+  fi
+}
+
 # The kogut GitHub App (scripts/app.sh registers it). The id is empty until then.
 kogut_app_id() { jq -r '.app.id // empty' "$KOGUT_CONFIG"; }
 kogut_app_slug() { jq -r '.app.slug' "$KOGUT_CONFIG"; }

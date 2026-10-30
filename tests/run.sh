@@ -16,8 +16,9 @@ helpers='
 
 passed=0
 failed=0
+# check <name> <jq program> [input]; the input defaults to the signals digest.
 check() {
-  if jq -e "$helpers $2" <<<"$signals" >/dev/null; then
+  if jq -e "$helpers $2" <<<"${3:-$signals}" >/dev/null; then
     echo "ok    $1"
     passed=$((passed + 1))
   else
@@ -123,6 +124,71 @@ check "an alert without a fix leaves the fixed versions empty" \
   'repo("alpha") | .alerts.packages[2].patched == []'
 check "a repository without alerts has an empty summary" \
   'repo("beta") | .alerts == {total: 0, by_severity: {}, packages: []}'
+
+echo
+echo "findings tracked as issues"
+check "a workflow red for two runs is a finding with a stable key" \
+  'repo("alpha") | .findings[] | select(.key == "ci:.github/workflows/ci.yml")
+   | .auto and .facts.failing_streak == 2 and .slug == "ci-github-workflows-ci-yml"'
+check "a flaky workflow is not a finding" \
+  'repo("alpha") | [.findings[] | select(.kind == "ci") | .facts.workflow] == ["CI"]'
+check "a single red run becomes a finding only once it is a day old" \
+  '(repo("delta") | .ci_failing | length) == 2
+   and (repo("delta") | [.findings[] | select(.kind == "ci") | .facts.workflow]) == ["Report"]'
+check "a disabled workflow is a finding" \
+  'repo("alpha") | any(.findings[]; .key == "workflow-disabled:.github/workflows/old-nightly.yml" and .facts.state == "disabled_inactivity")'
+check "critical and high alerts are one finding, worst first" \
+  'repo("alpha") | .findings[] | select(.key == "alerts") | .facts.packages | map(.package) == ["shell-quote", "next"]'
+check "hygiene gaps are one finding, and a well-kept repository has none" \
+  '(repo("beta") | any(.findings[]; .key == "hygiene")) and (repo("alpha") | all(.findings[]; .key != "hygiene"))'
+check "majors are grouped per npm scope and wait for the model" \
+  'repo("delta") | .findings[] | select(.key == "major:@opentelemetry/*")
+   | (.auto | not) and (.facts.prs | map(.number)) == [11, 12] and .slug == "major-at-opentelemetry"'
+check "an unscoped major is a finding of its own, with its versions" \
+  'repo("delta") | .findings[] | select(.key == "major:left-pad") | .facts.prs[0].versions == ["left-pad 0.0.3 → 0.0.4"]'
+
+# The issue policy in scripts/issues.jq, run on a fixture repository's findings
+# with the given open issues and diagnoses.
+plan() {
+  jq -c -n -L scripts --argjson d "$(jq -c --arg r "$1" '.repos[] | select(.name == $r)' <<<"$signals")" \
+    --argjson issues "$2" --argjson texts "$3" \
+    'include "issues"; plan($d; $issues; $texts; "2026-10-30"; "https://example.com/kogut")'
+}
+
+echo
+echo "issue policy"
+fresh="$(plan alpha '[]' '{}')"
+check "auto findings are opened, and a major without a diagnosis is not" \
+  'map({action, title}) == [
+     {action: "open", title: "CI: CI is failing on main"},
+     {action: "open", title: "CI: Old nightly is disabled"},
+     {action: "open", title: "Security: critical and high Dependabot alerts"},
+     {action: "skip", title: "Major upgrade: @opentelemetry/*"}]' "$fresh"
+check "a diagnosis opens the issue for a major and leads its body" \
+  '.[] | select(.title == "Major upgrade: @opentelemetry/*") | .action == "open"
+   and (.body | startswith("Needs a migration.\n\n<!-- kogut-facts -->"))
+   and (.body | contains("- #2: @opentelemetry/core 2.12.0 → 3.0.0"))' \
+  "$(plan alpha '[]' '{"major-at-opentelemetry": "Needs a migration.\n"}')"
+existing="$(jq -c -n --argjson fresh "$fresh" '[
+  {number: 7, title: "CI: CI is failing on main", url: "u7", key: "ci:.github/workflows/ci.yml",
+   body: "Old diagnosis.\n\n<!-- kogut-facts -->\nstale facts\n<!-- kogut-finding: ci:.github/workflows/ci.yml -->"},
+  {number: 8, title: "Repository hygiene gaps", url: "u8", key: "hygiene", body: "gaps"},
+  ($fresh[] | select(.title | startswith("Security")) | {number: 9, title, url: "u9", key, body}),
+  {number: 10, title: "Not filed by kogut", url: "u10", key: null, body: "no key"}]')"
+kept="$(plan alpha "$existing" '{}')"
+check "an issue gets fresh facts and keeps its diagnosis" \
+  '.[] | select(.number == 7) | .action == "update"
+   and (.body | startswith("Old diagnosis.\n\n<!-- kogut-facts -->"))
+   and (.body | contains("Failed runs in a row on the default branch: 2 of the last 4"))' "$kept"
+check "a new diagnosis replaces the old one" \
+  '.[] | select(.number == 7) | (.body | startswith("New diagnosis.")) and (.body | contains("Old diagnosis") | not)' \
+  "$(plan alpha "$existing" '{"ci-github-workflows-ci-yml": "New diagnosis."}')"
+check "an issue that already reads right is left alone" \
+  '.[] | select(.number == 9) | .action == "keep"' "$kept"
+check "an issue whose finding is gone is closed, saying why" \
+  '.[] | select(.number == 8) | .action == "close" and (.comment | contains("no hygiene gaps are left"))' "$kept"
+check "an issue without a kogut key is never touched" \
+  'all(.[]; .number != 10)' "$kept"
 
 echo
 echo "$passed passed, $failed failed"
