@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Collects the maintenance state of the repositories in kohut.config.json.
+# Collects the maintenance state of the repositories in kogut.config.json.
 #
 #   ./scripts/collect.sh [repo ...]
 #
-# Writes the raw snapshot to .kohut/state.json and prints the signals digest
+# Writes the raw snapshot to .kogut/state.json and prints the signals digest
 # computed from it by signals.jq: per repository, only what needs attention.
 # The digest is compact JSON, so it fits in one read; pipe it to jq to browse.
 # Read-only — nothing on GitHub is changed.
@@ -11,17 +11,17 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-owner="$(kohut_owner)"
-window="$(kohut_policy run_window)"
+owner="$(kogut_owner)"
+window="$(kogut_policy run_window)"
 
 repos=()
 if [ $# -gt 0 ]; then
   for r in "$@"; do
-    kohut_require_repo "$r"
+    kogut_require_repo "$r"
     repos+=("$r")
   done
 else
-  while IFS= read -r r; do repos+=("$r"); done < <(kohut_repos)
+  while IFS= read -r r; do repos+=("$r"); done < <(kogut_repos)
 fi
 
 tmp="$(mktemp -d)"
@@ -100,7 +100,7 @@ collect_repo() {
   fi
 
   local local_clone=false path
-  path="$(kohut_repo_path "$repo")"
+  path="$(kogut_repo_path "$repo")"
   [ -d "$path/.git" ] && local_clone=true
 
   jq -n \
@@ -143,10 +143,10 @@ for i in "${!repos[@]}"; do
   fi
 done
 
-mkdir -p "$KOHUT_ROOT/.kohut"
-state="$KOHUT_ROOT/.kohut/state.json"
+mkdir -p "$KOGUT_ROOT/.kogut"
+state="$KOGUT_ROOT/.kogut/state.json"
 for r in "${repos[@]}"; do cat "$tmp/$r.json"; done |
-  jq -s --arg owner "$owner" --slurpfile config "$KOHUT_CONFIG" \
+  jq -s --arg owner "$owner" --slurpfile config "$KOGUT_CONFIG" \
     '{generated_at: (now | todate), owner: $owner, policy: $config[0].policy, repos: .}' >"$state"
 
-jq -c -f "$KOHUT_ROOT/scripts/signals.jq" "$state"
+jq -c -f "$KOGUT_ROOT/scripts/signals.jq" "$state"

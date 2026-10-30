@@ -1,5 +1,5 @@
 name: Bug report
-description: kohut misjudged a repository, or a script failed
+description: kogut misjudged a repository, or a script failed
 labels: ['bug']
 body:
   - type: dropdown
@@ -18,7 +18,7 @@ body:
     id: what
     attributes:
       label: What happened
-      description: The command you ran and what kohut did. Remove webhook URLs and tokens before pasting output.
+      description: The command you ran and what kogut did. Remove webhook URLs and tokens before pasting output.
     validations:
       required: true
   - type: textarea

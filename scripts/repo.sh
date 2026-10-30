@@ -7,7 +7,7 @@
 #   ./scripts/repo.sh <repo> ls [dir]
 #   ./scripts/repo.sh <repo> log [path]
 #
-# Reads the local clone from kohut.config.json. The fetch updates only the
+# Reads the local clone from kogut.config.json. The fetch updates only the
 # remote-tracking ref, so the working tree is left alone.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
@@ -17,14 +17,14 @@ usage="usage: repo.sh <repo> grep <regex> [pathspec ...] | show <path> | ls [dir
 [ $# -ge 2 ] || die "$usage"
 repo="$1" cmd="$2"
 shift 2
-kohut_require_repo "$repo"
-dir="$(kohut_repo_path "$repo")"
+kogut_require_repo "$repo"
+dir="$(kogut_repo_path "$repo")"
 [ -d "$dir/.git" ] || die "no local clone of $repo at $dir"
 
 branch="$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 branch="${branch#origin/}"
 if [ -z "$branch" ]; then
-  branch="$(gh repo view "$(kohut_owner)/$repo" --json defaultBranchRef --jq .defaultBranchRef.name)"
+  branch="$(gh repo view "$(kogut_owner)/$repo" --json defaultBranchRef --jq .defaultBranchRef.name)"
 fi
 git -C "$dir" fetch --quiet origin "$branch"
 ref="origin/$branch"

@@ -4,7 +4,7 @@
 
 ## Type of change
 
-- [ ] feat: kohut does something new
+- [ ] feat: kogut does something new
 - [ ] fix
 - [ ] policy: a rule in `signals.jq` or a guard in `scripts/`
 - [ ] permissions: `.claude/settings.json`

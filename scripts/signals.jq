@@ -1,10 +1,10 @@
-# Turns the raw snapshot (.kohut/state.json) into the signals digest: per
+# Turns the raw snapshot (.kogut/state.json) into the signals digest: per
 # repository, only what needs attention. Every rule that needs no judgement
 # lives here rather than in the prompt, so no PR body can argue with it.
 
-# Ages are measured from KOHUT_NOW when it is set (the tests pin the clock with
+# Ages are measured from KOGUT_NOW when it is set (the tests pin the clock with
 # it), otherwise from the current time.
-def now_ts: if $ENV.KOHUT_NOW then $ENV.KOHUT_NOW | fromdateiso8601 else now end;
+def now_ts: if $ENV.KOGUT_NOW then $ENV.KOGUT_NOW | fromdateiso8601 else now end;
 def days_since: (now_ts - fromdateiso8601) / 86400 | floor;
 
 def ok_result: IN("SUCCESS", "SKIPPED", "NEUTRAL");

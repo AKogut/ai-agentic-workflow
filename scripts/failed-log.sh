@@ -10,10 +10,10 @@ source "$(dirname "$0")/lib.sh"
 
 [ $# -ge 2 ] || die "usage: failed-log.sh <repo> <run-id> [context-lines]"
 repo="$1" run="$2" context="${3:-50}"
-kohut_require_repo "$repo"
+kogut_require_repo "$repo"
 [[ "$run" =~ ^[0-9]+$ ]] || die "run id must be numeric: $run"
 [[ "$context" =~ ^[0-9]+$ ]] || die "context-lines must be numeric: $context"
-full="$(kohut_owner)/$repo"
+full="$(kogut_owner)/$repo"
 
 # Job logs download at a few hundred KB a second, and a device-test job can
 # log 40 MB. Past the limit the annotations and the failed steps have to do.

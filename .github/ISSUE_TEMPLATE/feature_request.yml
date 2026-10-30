@@ -1,5 +1,5 @@
 name: Idea
-description: A new signal, rule or action for kohut
+description: A new signal, rule or action for kogut
 labels: ['enhancement']
 body:
   - type: textarea

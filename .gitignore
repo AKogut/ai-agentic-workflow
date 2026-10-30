@@ -2,6 +2,6 @@
 .env
 
 # Run state written by scripts/collect.sh.
-.kohut/
+.kogut/
 
 .claude/settings.local.json

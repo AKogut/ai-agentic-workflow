@@ -4,7 +4,7 @@
 
 Please do not open a public issue. Report it privately through [GitHub's vulnerability reporting](https://github.com/AKogut/ai-agentic-workflow/security/advisories/new). I will acknowledge it within a few days.
 
-Reports that matter most here are ways to make kohut act beyond its policy: prompt injection through PR bodies, release notes or CI logs that leads to a merge, a write or a leaked secret.
+Reports that matter most here are ways to make kogut act beyond its policy: prompt injection through PR bodies, release notes or CI logs that leads to a merge, a write or a leaked secret.
 
 ## How the project protects itself
 
@@ -17,7 +17,7 @@ Reports that matter most here are ways to make kohut act beyond its policy: prom
 | Secrets committed by mistake | A [pre-commit hook](.githooks/pre-commit) and a CI job scan with gitleaks, including a rule for Discord webhooks. GitHub secret scanning and push protection are enabled. |
 | A malicious package in a Dependabot update | Dependabot branches are never installed or run locally, only in GitHub's CI. A 3-day cooldown applies before an update counts as ready. |
 | Unreviewed changes to `main` | A ruleset allows changes only through pull requests that pass the required checks: squash merges, linear history, no force pushes, no deletion. Only the owner can override a red check, and only on a pull request. |
-| kohut merging past a red check with the owner's token | The owner's override travels with the token kohut runs on. Raw `gh pr merge` needs the owner's approval on every run, and the merge script (roadmap step 4) will never pass `--admin`. |
+| kogut merging past a red check with the owner's token | The owner's override travels with the token kogut runs on. Raw `gh pr merge` needs the owner's approval on every run, and the merge script (roadmap step 4) will never pass `--admin`. |
 
 ## Supported versions
 
