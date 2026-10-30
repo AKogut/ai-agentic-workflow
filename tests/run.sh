@@ -75,12 +75,26 @@ check "a well-kept repository has no hygiene issues" \
 check "every gap is reported" \
   'repo("beta") | .hygiene_issues as $issues
    | ["no required status checks", "auto-merge is disabled", "no .github/dependabot.yml",
-      "Dependabot alerts are disabled", "no pushes for 50 days", "no local clone", "merged branches are not deleted"]
+      "Dependabot alerts are disabled", "no commits on main for 50 days", "no local clone", "merged branches are not deleted"]
    | all(. as $gap | any($issues[]; startswith($gap)))'
-check "open alerts pass through" \
-  'repo("alpha") | .alerts | length == 1 and .[0].severity == "high"'
+check "idleness counts commits on the default branch, not pushes to other branches" \
+  'repo("beta") | .hygiene.days_since_commit == 50'
 check "a repository that failed to collect keeps its error and nothing else" \
   'repo("gamma") == {name: "gamma", error: "gh: Not Found (HTTP 404)"}'
+
+echo
+echo "alerts"
+check "alerts are counted by severity" \
+  'repo("alpha") | .alerts | .total == 4 and .by_severity == {critical: 1, high: 1, medium: 1, low: 1}'
+check "alerts are grouped per package, worst first" \
+  'repo("alpha") | .alerts.packages | map(.package) == ["shell-quote", "next", "extract-zip"]'
+check "a package carries its worst alert, its count and every fixed version" \
+  'repo("alpha") | .alerts.packages[1] == {package: "next", severity: "high", count: 2,
+     patched: ["16.3.8", "16.3.9"], url: "https://github.com/example/alpha/security/dependabot/1"}'
+check "an alert without a fix leaves the fixed versions empty" \
+  'repo("alpha") | .alerts.packages[2].patched == []'
+check "a repository without alerts has an empty summary" \
+  'repo("beta") | .alerts == {total: 0, by_severity: {}, packages: []}'
 
 echo
 echo "$passed passed, $failed failed"

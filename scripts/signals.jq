@@ -80,6 +80,27 @@ def other_pr($p):
       stale: ($age >= $p.stale_pr_days)
     };
 
+# Open Dependabot alerts, summed by severity and grouped per package, worst
+# first: one repository can carry a hundred alerts for a dozen packages. The
+# individual alerts stay in the snapshot.
+def severity_rank: {critical: 4, high: 3, medium: 2, low: 1}[.] // 0;
+
+def alert_summary:
+  {
+    total: length,
+    by_severity: (reduce .[] as $a ({}; .[$a.severity] += 1)),
+    packages: (group_by(.package) | map(
+      max_by(.severity | severity_rank) as $worst
+      | {
+          package: $worst.package,
+          severity: $worst.severity,
+          count: length,
+          patched: ([.[].patched | select(. != null)] | unique),
+          url: $worst.url
+        })
+      | sort_by(-(.severity | severity_rank), -.count, .package))
+  };
+
 # Health of one workflow on the default branch, newest run first. Cancelled
 # and skipped runs say nothing about health and are left out.
 def health($runs):
@@ -101,7 +122,8 @@ def health($runs):
     . as $r
     | .required_checks as $required
     | [.workflows[] | select(.state == "active") | . + {health: health($r.runs[.id | tostring] // [])}] as $active
-    | (.repo.pushed_at | days_since) as $idle
+    # Snapshots taken before last_commit_at was collected fall back to pushed_at.
+    | (.repo.last_commit_at // .repo.pushed_at | days_since) as $idle
     | {
         name,
         url: .repo.html_url,
@@ -119,14 +141,14 @@ def health($runs):
           name, path, failures: .health.failures, of_runs: .health.total
         }],
         workflows_disabled: [.workflows[] | select(.state != "active") | {name, path, state}],
-        alerts: .alerts.items,
+        alerts: (.alerts.items | alert_summary),
         hygiene: {
           required_checks: $required,
           auto_merge: .repo.allow_auto_merge,
           delete_branch_on_merge: .repo.delete_branch_on_merge,
           dependabot_config: .dependabot_config,
           dependabot_alerts: .alerts.status,
-          days_since_push: $idle,
+          days_since_commit: $idle,
           local_clone: .local_clone
         },
         hygiene_issues: [
@@ -137,7 +159,8 @@ def health($runs):
           (if .alerts.status == "disabled" then "Dependabot alerts are disabled" else empty end),
           (if .alerts.status == "unavailable" then "Dependabot alerts could not be read" else empty end),
           (if $idle >= $p.inactivity_warn_days then
-            "no pushes for \($idle) days: GitHub disables scheduled workflows after 60" else empty end),
+            "no commits on \(.repo.default_branch) for \($idle) days: GitHub disables scheduled workflows after 60"
+          else empty end),
           (if .local_clone.present | not then "no local clone at \(.local_clone.path)" else empty end),
           (if .repo.delete_branch_on_merge | not then "merged branches are not deleted" else empty end)
         ]
