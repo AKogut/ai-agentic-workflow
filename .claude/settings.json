@@ -24,6 +24,7 @@
     "ask": [
       "Bash(./scripts/merge-dependabot.sh:*)",
       "Bash(./scripts/open-fix-pr.sh:*)",
+      "Bash(./scripts/issues.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr close:*)",

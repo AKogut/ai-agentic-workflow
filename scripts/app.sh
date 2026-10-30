@@ -33,7 +33,7 @@ homepage="$(jq -r '.app.homepage' "$KOGUT_CONFIG")"
 case "${1:-}" in
   manifest)
     [ -z "$(kogut_app_id)" ] || die "$slug is already registered (id $(kogut_app_id))"
-    # The App can write code, PRs and workflow files, and nothing else. It has
+    # The App can write code, PRs, issues and workflow files, and nothing else. It has
     # no webhook, because kogut runs on demand and never listens.
     manifest="$(jq -cn --arg name "$slug" --arg url "$homepage" --arg owner "$(kogut_owner)" '{
       name: $name,
@@ -44,7 +44,7 @@ case "${1:-}" in
       hook_attributes: {url: $url, active: false},
       request_oauth_on_install: false,
       setup_on_update: false,
-      default_permissions: {metadata: "read", contents: "write", pull_requests: "write", workflows: "write"},
+      default_permissions: {metadata: "read", contents: "write", pull_requests: "write", issues: "write", workflows: "write"},
       default_events: []
     }')"
     page="$KOGUT_ROOT/.kogut/app-manifest.html"

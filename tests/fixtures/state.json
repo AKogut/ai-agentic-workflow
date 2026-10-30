@@ -232,8 +232,20 @@
           "headRefName": "dependabot/npm_and_yarn/vite-8.3.5", "url": "https://github.com/example/delta/pull/18"
         }
       ],
-      "workflows": [],
-      "runs": {},
+      "workflows": [
+        { "id": 41, "name": "Report", "path": ".github/workflows/report.yml", "state": "active" },
+        { "id": 42, "name": "Deploy", "path": ".github/workflows/deploy.yml", "state": "active" }
+      ],
+      "runs": {
+        "41": [
+          { "id": 411, "event": "schedule", "status": "completed", "conclusion": "failure", "created_at": "2026-10-28T12:00:00Z", "url": "https://github.com/example/delta/actions/runs/411" },
+          { "id": 412, "event": "schedule", "status": "completed", "conclusion": "success", "created_at": "2026-10-27T12:00:00Z", "url": "https://github.com/example/delta/actions/runs/412" }
+        ],
+        "42": [
+          { "id": 421, "event": "push", "status": "completed", "conclusion": "failure", "created_at": "2026-10-30T10:00:00Z", "url": "https://github.com/example/delta/actions/runs/421" },
+          { "id": 422, "event": "push", "status": "completed", "conclusion": "success", "created_at": "2026-10-29T10:00:00Z", "url": "https://github.com/example/delta/actions/runs/422" }
+        ]
+      },
       "required_checks": ["ci"],
       "alerts": { "status": "ok", "items": [] },
       "dependabot_config": true,

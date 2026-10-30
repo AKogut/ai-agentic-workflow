@@ -150,6 +150,48 @@ def alert_summary:
       | sort_by(-(.severity | severity_rank), -.count, .package))
   };
 
+# What kogut tracks as issues, one per finding. The key stays the same from one
+# run to the next, so a finding's issue is updated instead of opened again, and
+# closed once the finding is gone. An `auto` finding gets its issue without the
+# model; a major gets one only when the model's review says the owner must act.
+def major_name: if startswith("@") then split("/")[0] + "/*" else . end;
+
+def findings:
+  . as $r
+  | [
+      ($r.ci_failing[]
+        # One red run can be a blip; two in a row, or one left red for a day, is not.
+        | select(.failing_streak >= 2
+            or (.latest_run.created_at | if . then days_since >= 1 else false end))
+        | {key: "ci:\(.path)", kind: "ci", auto: true,
+           title: "CI: \(.name) is failing on \($r.default_branch)",
+           facts: {workflow: .name, path, failing_streak, of_runs, last_success_at, latest_run}}),
+      ($r.workflows_disabled[]
+        | {key: "workflow-disabled:\(.path)", kind: "workflow-disabled", auto: true,
+           title: "CI: \(.name) is disabled",
+           facts: {workflow: .name, path, state}}),
+      ([$r.alerts.packages[] | select(.severity | IN("critical", "high"))] as $serious
+        | if $serious == [] then empty else
+            {key: "alerts", kind: "alerts", auto: true,
+             title: "Security: critical and high Dependabot alerts",
+             facts: {by_severity: $r.alerts.by_severity, packages: $serious}}
+          end),
+      (if $r.hygiene_issues == [] then empty else
+         {key: "hygiene", kind: "hygiene", auto: true,
+          title: "Repository hygiene gaps",
+          facts: {issues: $r.hygiene_issues}}
+       end),
+      ([$r.dependabot_prs[] | select(.semver == "major") as $pr
+          | [($pr.bump // empty), $pr.updates[]] | map(select(.semver == "major")) | unique_by(.package)[]
+          | {name: (.package | major_name), version: "\(.package) \(.from) → \(.to)", pr: ($pr | {number, title, url})}]
+        | group_by(.name)[]
+        | {key: "major:\(.[0].name)", kind: "major", auto: false,
+           title: "Major upgrade: \(.[0].name)",
+           facts: {prs: (group_by(.pr.number) | map(.[0].pr + {versions: (map(.version) | unique)}))}})
+    ]
+  # The slug names the file the model writes the diagnosis to.
+  | map(. + {slug: (.key | ascii_downcase | gsub("@"; "at-") | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-"))});
+
 # Health of one workflow on the default branch, newest run first. Cancelled
 # and skipped runs say nothing about health and are left out.
 def health($runs):
@@ -214,5 +256,6 @@ def health($runs):
           (if .repo.delete_branch_on_merge | not then "merged branches are not deleted" else empty end)
         ]
       }
+    | . + {findings: findings}
   end]
 }
