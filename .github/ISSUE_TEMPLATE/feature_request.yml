@@ -1,0 +1,25 @@
+name: Idea
+description: A new signal, rule or action for kohut
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The maintenance problem
+      description: What goes unnoticed or takes manual time today?
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Where it belongs
+      description: Rules that need no judgement go in code, and only judgement goes to the model.
+      options:
+        - Code (a deterministic rule in signals.jq or a script)
+        - Model (needs judgement in SKILL.md)
+        - Both
+        - Not sure
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal

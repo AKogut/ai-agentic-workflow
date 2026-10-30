@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stops a commit that would add a secret, before it can reach GitHub. CI scans
+# again, but by then the secret would already be in a public history.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed, so staged changes were not scanned for secrets" >&2
+  exit 0
+fi
+exec gitleaks git --pre-commit --staged --redact --no-banner --config "$(git rev-parse --show-toplevel)/.gitleaks.toml"
