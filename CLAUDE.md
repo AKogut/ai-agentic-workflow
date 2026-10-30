@@ -21,11 +21,11 @@ Kohut runs on the owner's Claude subscription, through whatever account Claude C
 ## Rules for changing kohut
 
 - Policy lives in code, not in the prompt. A rule that code can check (author, checks, age) belongs in `signals.jq` or in the script that acts on it, so a persuasive PR body cannot talk the model past it.
-- Every action goes through a script under `scripts/`. The raw commands (`gh pr merge`, `git push`) stay denied in `.claude/settings.json`. An action that needs the owner's approval is an `ask` rule, not a sentence in the prompt.
+- Every action goes through a script under `scripts/`. The raw commands (`gh pr merge`, `git push`) are `ask` rules in `.claude/settings.json`, never `allow`. An action that needs the owner's approval is an `ask` rule, not a sentence in the prompt.
 - Scripts accept repository names only from `kohut.config.json` (`kohut_require_repo` in `scripts/lib.sh`).
 - Scripts are bash, `gh` and `jq`, and must work with macOS bash 3.2. Run `shellcheck scripts/*.sh tests/*.sh` after changing them.
 - A rule changed or added in `signals.jq` gets a check in `tests/run.sh`. Run `./tests/run.sh`.
-- `main` takes pull requests only (ruleset `main`: squash, linear history, required checks `Lint`, `Policy tests` and `Secret scan`). All seven portfolio repositories use the same ruleset, and the repository admin can bypass it on pull requests only. `gh pr merge` stays denied here as a kohut guard, so the owner merges. Commits are authored by the owner, with no co-author trailer.
+- `main` takes pull requests only (ruleset `main`: squash, linear history, required checks `Lint`, `Policy tests` and `Secret scan`). All seven portfolio repositories use the same ruleset, and the repository admin can bypass it on pull requests only. `gh pr merge` is an `ask` rule here, so the owner approves every merge, and it never carries `--admin`. Commits are authored by the owner, with no co-author trailer.
 - kohut runs on the owner's token, and that token carries the admin bypass. The merge script (roadmap step 4) must never pass `--admin`, and must refuse to merge unless the gate in `signals.jq` says the PR is ready.
 - This repository is public. Nothing personal or secret goes into it: webhooks stay in `.env`, and run output stays in `.kohut/`.
 - Reports are in Ukrainian. Code, docs and commits are in English.

@@ -64,7 +64,7 @@ flowchart LR
 
 kohut reads text written by strangers. Dependabot copies upstream release notes into its PRs verbatim, and CI logs can contain anything. The design assumes that text is hostile.
 
-- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kohut scripts. Merges, repository edits and workflow changes are denied. `gh api`, `git push` and `curl` need the owner's approval.
+- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kohut scripts. Repository edits and workflow changes are denied. Merges, `gh api`, `git push` and `curl` need the owner's approval.
 - **Policy in code.** The model can hold a PR back but cannot merge past a blocker. The rules are covered by [tests](tests/run.sh).
 - **Secrets stay local.** Discord webhooks live in a gitignored `.env` that the model is denied from reading. [`notify.sh`](scripts/notify.sh) accepts only Discord URLs and never prints them. Mentions are disabled, so quoted text cannot ping anyone.
 - **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI.

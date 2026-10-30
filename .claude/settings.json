@@ -19,13 +19,13 @@
       "Bash(gh release list:*)"
     ],
     "ask": [
+      "Bash(gh pr merge:*)",
       "Bash(gh api:*)",
       "Bash(git push:*)",
       "Bash(curl:*)"
     ],
     "deny": [
       "Read(./.env)",
-      "Bash(gh pr merge:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo delete:*)",
       "Bash(gh workflow disable:*)"

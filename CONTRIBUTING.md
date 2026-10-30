@@ -15,7 +15,7 @@ shellcheck scripts/*.sh tests/*.sh
 These are the rules from [CLAUDE.md](CLAUDE.md) that a change is reviewed against:
 
 - **Policy lives in code, not in the prompt.** A rule that code can check (author, checks, age) goes in `signals.jq` or the script that acts on it, and gets a test in `tests/run.sh`.
-- **Every action goes through a script.** The raw command (`gh pr merge`, `git push`) stays denied in `.claude/settings.json`. An action that needs approval is an `ask` rule, not a sentence in the prompt.
+- **Every action goes through a script.** The raw commands (`gh pr merge`, `git push`) are `ask` rules in `.claude/settings.json`, never `allow`. An action that needs approval is an `ask` rule, not a sentence in the prompt.
 - **Scripts accept only the repositories in `kohut.config.json`.**
 - **Bash 3.2 compatible**, because that is the bash macOS ships.
 
