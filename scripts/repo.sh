@@ -21,11 +21,7 @@ kogut_require_repo "$repo"
 dir="$(kogut_repo_path "$repo")"
 [ -d "$dir/.git" ] || die "no local clone of $repo at $dir"
 
-branch="$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-branch="${branch#origin/}"
-if [ -z "$branch" ]; then
-  branch="$(gh repo view "$(kogut_owner)/$repo" --json defaultBranchRef --jq .defaultBranchRef.name)"
-fi
+branch="$(kogut_default_branch "$repo")"
 git -C "$dir" fetch --quiet origin "$branch"
 ref="origin/$branch"
 

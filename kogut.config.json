@@ -1,5 +1,10 @@
 {
   "owner": "AKogut",
+  "app": {
+    "slug": "kogut-agent",
+    "id": 5544051,
+    "homepage": "https://github.com/AKogut/ai-agentic-workflow"
+  },
   "policy": {
     "cooldown_days": 3,
     "stale_pr_days": 7,
