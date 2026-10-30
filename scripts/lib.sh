@@ -59,6 +59,80 @@ kogut_scan() {
   fi
 }
 
+# The title line of a fix's text file: the PR title, or a follow-up's commit
+# message. kogut maintains and does not build features, so the title must use
+# one of the maintenance types of Conventional Commits. The rest of the file,
+# after a blank second line, is the PR body or the follow-up's comment.
+kogut_fix_title() {
+  local text="$1" title title_re='^(fix|ci|build|chore|docs|test)(\([a-z0-9._/-]+\))?: .+$'
+  [ -s "$text" ] || die "the text is missing: $text"
+  title="$(head -n 1 "$text")"
+  [[ "$title" =~ $title_re ]] || die "the title must be a maintenance Conventional Commit (fix, ci, build, chore, docs, test): $title"
+  [ "${#title}" -le 72 ] || die "the title is longer than 72 characters"
+  [ -z "$(sed -n 2p "$text")" ] || die "the second line of $text must be blank"
+  [ -n "$(tail -n +3 "$text" | tr -d '[:space:]')" ] || die "the body of $text is empty"
+  echo "$title"
+}
+
+# Stages everything in a fix's worktree and checks it. The change must not be
+# empty, and it may touch .github/workflows/ only when $2 is true: a workflow
+# on a branch runs with the repository's secrets before review, so the owner
+# should see that flag in the prompt. Then the changed lines and the text ($3)
+# are scanned with gitleaks.
+kogut_stage() {
+  local worktree="$1" workflows="$2" text="$3" changed
+  git -C "$worktree" add -A
+  changed="$(git -C "$worktree" diff --cached --name-only --no-renames HEAD)"
+  [ -n "$changed" ] || die "the fix changes nothing"
+  if grep -q '^\.github/workflows/' <<<"$changed"; then
+    [ "$workflows" = true ] || die "the fix changes .github/workflows/: pass --workflows"
+  else
+    [ "$workflows" = false ] || die "the fix changes no workflow: drop --workflows"
+  fi
+  { git -C "$worktree" diff --cached --unified=0 HEAD; cat "$text"; } | kogut_scan ||
+    die "gitleaks flagged the fix; nothing was sent"
+}
+
+# The staged change, for the owner to read before approving.
+kogut_show_diff() {
+  git -C "$1" diff --cached --stat HEAD
+  echo "--- diff"
+  git -C "$1" diff --cached HEAD | awk 'NR <= 400 { print } END { if (NR > 400) print "... " NR - 400 " more lines" }'
+}
+
+# Builds a worktree's staged change as a commit on GitHub, on top of the
+# worktree's HEAD, and prints the commit's id. The blobs and modes are the
+# ones git staged, and GitHub's tree must hash to the staged tree, so the
+# commit holds exactly the diff that was shown. Needs GH_TOKEN exported with
+# the App's token; no git credentials are involved.
+kogut_api_commit() {
+  local full="$1" worktree="$2" message="$3" entries status path mode sha blob tree staged
+  entries="$(mktemp)"
+  while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+    case "$path" in -* | *$'\n'* | *$'\t'*) die "refusing an unusual path: $path" ;; esac
+    if [ "$status" = D ]; then
+      read -r mode _ <<<"$(git -C "$worktree" ls-tree HEAD -- "$path")"
+      jq -cn --arg p "$path" --arg m "$mode" '{path: $p, mode: $m, type: "blob", sha: null}'
+    else
+      read -r mode sha _ <<<"$(git -C "$worktree" ls-files -s -- "$path")"
+      [ "$mode" != 160000 ] || die "refusing a submodule change: $path"
+      blob="$(git -C "$worktree" cat-file blob "$sha" | base64 | tr -d '\n' |
+        jq -Rs '{content: ., encoding: "base64"}' |
+        gh api -X POST "repos/$full/git/blobs" --input - --jq .sha)"
+      [ "$blob" = "$sha" ] || die "GitHub stored $path as $blob, not $sha"
+      jq -cn --arg p "$path" --arg m "$mode" --arg s "$blob" '{path: $p, mode: $m, type: "blob", sha: $s}'
+    fi
+  done < <(git -C "$worktree" diff --cached --name-status -z --no-renames HEAD) >"$entries"
+  tree="$(jq -s --arg base "$(git -C "$worktree" rev-parse 'HEAD^{tree}')" '{base_tree: $base, tree: .}' "$entries" |
+    gh api -X POST "repos/$full/git/trees" --input - --jq .sha)"
+  rm -f "$entries"
+  staged="$(git -C "$worktree" write-tree)"
+  [ "$tree" = "$staged" ] || die "GitHub built tree $tree, but the staged tree is $staged; nothing was sent"
+  jq -n --arg m "$message" --arg t "$tree" --arg p "$(git -C "$worktree" rev-parse HEAD)" \
+    '{message: $m, tree: $t, parents: [$p]}' |
+    gh api -X POST "repos/$full/git/commits" --input - --jq .sha
+}
+
 # The kogut GitHub App (scripts/app.sh registers it). The id is empty until then.
 kogut_app_id() { jq -r '.app.id // empty' "$KOGUT_CONFIG"; }
 kogut_app_slug() { jq -r '.app.slug' "$KOGUT_CONFIG"; }

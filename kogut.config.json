@@ -9,7 +9,8 @@
     "cooldown_days": 3,
     "stale_pr_days": 7,
     "inactivity_warn_days": 45,
-    "run_window": 30
+    "run_window": 30,
+    "followup_limit": 3
   },
   "repos": [
     { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },

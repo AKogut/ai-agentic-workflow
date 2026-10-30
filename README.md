@@ -63,7 +63,7 @@ flowchart LR
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
 4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The merge is made by `kogut-agent[bot]`, the script never passes `--admin`, and the owner approves every call.
 5. **Track.** [`issues.sh`](scripts/issues.sh) keeps one GitHub issue per finding: a red workflow, a disabled one, critical and high alerts, hygiene gaps, and the majors the model says need me. Each finding carries a stable key from `signals.jq`, so a run updates the issue's facts instead of opening a duplicate, and closes the issue with a comment once the finding is gone. The rules live in [`issues.jq`](scripts/issues.jq) and are tested. The model writes only the diagnosis. The issue list becomes kogut's memory between runs and a public record of what it found and closed.
-6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes.
+6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes. If the PR goes red, or I leave a review, the next run follows up: [`update-fix-pr.sh`](scripts/update-fix-pr.sh) pushes a commit on the same branch, or answers with a comment when no change is needed. Only my reviews count, and after three follow-up commits the PR is mine.
 7. **Report.** Each repository gets one block: what kogut merged, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
 
 ## Security model
@@ -139,6 +139,8 @@ scripts/issues.sh               one issue per finding: opened, updated, closed b
 scripts/issues.jq               the issue policy: when to open, update, keep, skip or close
 scripts/fix-start.sh            a worktree at origin's default branch for one fix
 scripts/open-fix-pr.sh          the only way kogut opens a PR: gitleaks, then the App's commit
+scripts/update-fix-pr.sh        a follow-up commit or an answer on kogut's own PR, within a limit
+scripts/pr-feedback.sh          the owner's reviews on a kogut PR; nobody else's words
 scripts/app.sh                  registers the GitHub App and checks its installation
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
@@ -150,7 +152,7 @@ kogut.config.json               watched repositories and policy numbers
 
 ```sh
 git config core.hooksPath .githooks   # gitleaks scans every commit
-./tests/run.sh                        # 49 policy checks
+./tests/run.sh                        # 55 policy checks
 shellcheck scripts/*.sh tests/*.sh
 ```
 
@@ -165,7 +167,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Fixes:** prepared in a worktree and opened as a PR by `kogut-agent[bot]` after the owner approves
 - [x] **Identity:** a GitHub App, so the agent's work and mine stay apart in the history
 - [x] **Issues:** one issue per finding, updated every run and closed once the finding is gone
-- [ ] **Follow-up:** kogut takes its own PRs to green and answers review comments
+- [x] **Follow-up:** kogut takes its own PRs to green and answers review comments
 - [ ] **Tasks:** issues labelled `kogut` by the owner become PRs
 - [ ] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix
 

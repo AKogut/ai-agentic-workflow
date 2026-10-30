@@ -41,6 +41,6 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 4. Done: merging Dependabot PRs through `scripts/merge-dependabot.sh`, with the owner's approval for each merge.
 5. Done: fixes in a worktree (`/kogut fix`), opened by `kogut-agent[bot]` after the owner approves, and merged by the owner.
 6. Done: issues as kogut's memory. `scripts/issues.sh` keeps one issue per finding (keys from `signals.jq`, policy in `issues.jq`) and closes it once the finding is gone.
-7. Follow-up: kogut takes its own PRs to green (CI red → a new commit on its branch) and answers review comments, within a retry limit.
+7. Done: follow-up. `kogut_prs[]` in `signals.jq` says what each of kogut's PRs needs, and only the owner's reviews count. `scripts/update-fix-pr.sh` pushes a follow-up commit (fast-forward only, up to `policy.followup_limit`) or answers with a comment.
 8. Tasks: issues the owner labels `kogut` become PRs. The scope is maintenance plus migrations, unless the owner widens it.
 9. Lockfile fixes: `overrides` plus `npm install --package-lock-only --ignore-scripts` in a fix worktree, for transitive alerts (approved by the owner on 2026-10-30).

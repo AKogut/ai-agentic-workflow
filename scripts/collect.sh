@@ -59,6 +59,16 @@ collect_repo() {
     --json number,title,body,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,url \
     >"$dir/prs.json"
 
+  # kogut's own PRs also carry their commits, reviews and comments, which the
+  # follow-up rules in signals.jq read. Asked for separately, so the large
+  # Dependabot list stays light, and capped at 10: GitHub refuses a query whose
+  # nested commits and authors could exceed 500,000 nodes, and 100 PRs would.
+  gh pr list -R "$full" --state open --limit 10 --author "app/$(kogut_app_slug)" \
+    --json number,commits,reviews,comments >"$dir/kogut-prs.json"
+  jq --slurpfile extra "$dir/kogut-prs.json" \
+    'map(. as $pr | . + ([$extra[0][] | select(.number == $pr.number)][0] // {}))' \
+    "$dir/prs.json" >"$dir/prs-merged.json" && mv "$dir/prs-merged.json" "$dir/prs.json"
+
   gh api "repos/$full/actions/workflows?per_page=100" \
     --jq '[.workflows[] | {id, name, path, state}]' >"$dir/workflows.json"
 
@@ -148,6 +158,6 @@ state="${KOGUT_STATE:-$KOGUT_ROOT/.kogut/state.json}"
 mkdir -p "$(dirname "$state")"
 for r in "${repos[@]}"; do cat "$tmp/$r.json"; done |
   jq -s --arg owner "$owner" --slurpfile config "$KOGUT_CONFIG" \
-    '{generated_at: (now | todate), owner: $owner, policy: $config[0].policy, repos: .}' >"$state"
+    '{generated_at: (now | todate), owner: $owner, app: $config[0].app.slug, policy: $config[0].policy, repos: .}' >"$state"
 
 jq -c -f "$KOGUT_ROOT/scripts/signals.jq" "$state"
