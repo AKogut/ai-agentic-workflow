@@ -119,6 +119,10 @@ collect_repo() {
       "$dir/tasks.json" >"$dir/tasks.tmp" && mv "$dir/tasks.tmp" "$dir/tasks.json"
   done
 
+  # kogut's own open issues: it takes some of them on as tasks without a label.
+  gh issue list -R "$full" --state open --label kogut --author "app/$(kogut_app_slug)" --limit 50 \
+    --json number,title,body,author,url,comments >"$dir/kogut-issues.json"
+
   local dependabot_config=false
   if gh api "repos/$full/contents/.github/dependabot.yml" --silent 2>/dev/null ||
     gh api "repos/$full/contents/.github/dependabot.yaml" --silent 2>/dev/null; then
@@ -139,6 +143,7 @@ collect_repo() {
     --slurpfile required "$dir/required.json" \
     --slurpfile alerts "$dir/alerts.json" \
     --slurpfile tasks "$dir/tasks.json" \
+    --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
     --argjson local_clone "$local_clone" \
@@ -152,6 +157,7 @@ collect_repo() {
       required_checks: $required[0],
       alerts: $alerts[0],
       tasks: $tasks[0],
+      kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,
       local_clone: {path: $path, present: $local_clone}
     }'

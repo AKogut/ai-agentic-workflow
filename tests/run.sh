@@ -114,6 +114,18 @@ check "once kogut has answered, the task waits for the owner" \
   'task("alpha"; 43) | .needs == "owner"'
 check "a reply from the owner hands the task back to kogut" \
   'task("alpha"; 44) | .needs == "start"'
+check "alerts that no Dependabot PR names are known as uncovered" \
+  '(repo("alpha") | .findings[] | select(.key == "alerts") | .facts.uncovered) == ["shell-quote"]
+   and (repo("delta") | .findings[] | select(.key == "alerts") | .facts.uncovered) == []'
+check "kogut takes on its own alerts issue while a package is uncovered" \
+  'task("alpha"; 46) | .auto and .needs == "start" and .finding'
+check "kogut takes on its own issue for a major" \
+  'task("alpha"; 48) | .auto and .needs == "start"'
+check "kogut leaves its other issues, covered alerts and gone findings alone" \
+  '(repo("alpha") | [.tasks[].number] | index(47) == null)
+   and (repo("delta") | .tasks == []) and (repo("beta") | .tasks == [])'
+check "a marker copied into an issue by someone else makes no task" \
+  'repo("alpha") | [.tasks[].number] | index(49) == null'
 
 echo
 echo "workflows on the default branch"

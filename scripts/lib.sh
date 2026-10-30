@@ -133,15 +133,22 @@ kogut_api_commit() {
     gh api -X POST "repos/$full/git/commits" --input - --jq .sha
 }
 
-# Checks, on GitHub as it is now, that issue $2 is an open task the owner
-# handed kogut: labelled kogut-task, and the latest such label added by the
-# owner. Prints "finding" for an issue kogut files for a finding, which keeps
-# tracking it and closes on its own, and "task" for any other.
+# Checks, on GitHub as it is now, that issue $2 is an open task for kogut.
+# That is either one of kogut's own issues for alerts or for a major, filed by
+# the App itself, which the owner agreed kogut may take on unasked; or an issue
+# labelled kogut-task whose latest such label the owner added. Prints
+# "finding" for a kogut issue, which keeps tracking its finding and closes on
+# its own, and "task" for any other.
 kogut_task_check() {
   local full="$1" number="$2" issue actor
   issue="$(gh api "repos/$full/issues/$number")"
   [ "$(jq -r '.state' <<<"$issue")" = open ] || die "#$number is not open"
   jq -e '.pull_request == null' <<<"$issue" >/dev/null || die "#$number is a PR, not an issue"
+  if jq -e --arg bot "$(kogut_app_bot)" '.user.login == $bot and any(.labels[]; .name == "kogut")
+       and ((.body // "") | test("<!-- kogut-finding: (alerts|major:[^ ]+) -->"))' <<<"$issue" >/dev/null; then
+    echo finding
+    return
+  fi
   jq -e 'any(.labels[]; .name == "kogut-task")' <<<"$issue" >/dev/null || die "#$number is not labelled kogut-task"
   actor="$(gh api "repos/$full/issues/$number/events?per_page=100" \
     --jq '[.[] | select(.event == "labeled" and .label.name == "kogut-task")] | sort_by(.created_at) | last | .actor.login')"

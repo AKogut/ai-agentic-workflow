@@ -36,7 +36,7 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 
 - `dependabot_prs[]`: `semver` (`major`, `minor` or `patch`) is the riskiest change in the PR. Below 1.0 a minor counts as `major`. `bump` is the update named in the title, null for group PRs. `updates[]` lists the updates Dependabot names in the body. `belongs_with` lists the other PRs that take the same npm scope to a new major. Also `checks`, `blockers` and `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
 - `other_prs[]`: the owner's own PRs.
-- `tasks[]`: issues the owner labelled `kogut-task`, each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
+- `tasks[]`: issues the owner labelled `kogut-task`, and kogut's own issues it takes on unasked (`auto`), each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
 - `kogut_prs[]`: the PRs kogut opened, each with `checks`, `failing`, `attempts` (follow-up commits so far), the owner's unanswered `feedback[]` and what it `needs` (step 4).
 - `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`.
 - `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert. The individual alerts are in `.kogut/state.json`.
@@ -167,7 +167,7 @@ The script pushes only on top of the head it started from, and it refuses once t
 
 ## Tasks (`/kogut tasks` only)
 
-The owner hands kogut work by adding the label `kogut-task` to an issue, either one of kogut's own issues or any other. `tasks[]` lists them, and code decides what each `needs`:
+The owner hands kogut work by adding the label `kogut-task` to an issue, either one of kogut's own issues or any other. kogut also takes on two kinds of its own issues without a label, as the owner agreed: its alerts issue while a critical or high package has no Dependabot PR (`uncovered` in the alerts finding), and an issue it opened for a major, which means a migration. Those show as `auto: true`. `tasks[]` lists both kinds, and code decides what each `needs`:
 
 - `start`: take it on, or answer on it.
 - `in-progress`: a kogut PR names it already, and follow-ups carry it from there.
