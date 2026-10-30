@@ -2,7 +2,10 @@
 # repository, only what needs attention. Every rule that needs no judgement
 # lives here rather than in the prompt, so no PR body can argue with it.
 
-def days_since: (now - fromdateiso8601) / 86400 | floor;
+# Ages are measured from KOHUT_NOW when it is set (the tests pin the clock with
+# it), otherwise from the current time.
+def now_ts: if $ENV.KOHUT_NOW then $ENV.KOHUT_NOW | fromdateiso8601 else now end;
+def days_since: (now_ts - fromdateiso8601) / 86400 | floor;
 
 def ok_result: IN("SUCCESS", "SKIPPED", "NEUTRAL");
 def bad_result: IN("FAILURE", "TIMED_OUT", "CANCELLED", "ERROR", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE");

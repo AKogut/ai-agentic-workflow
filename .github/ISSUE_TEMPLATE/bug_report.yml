@@ -1,0 +1,34 @@
+name: Bug report
+description: kohut misjudged a repository, or a script failed
+labels: ['bug']
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Collection (collect.sh, signals.jq)
+        - Judgement (a wrong verdict in the report)
+        - Discord (notify.sh)
+        - Permissions (.claude/settings.json)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and what kohut did. Remove webhook URLs and tokens before pasting output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: 'Claude Code 2.1.150 · gh 2.x · jq 1.7 · macOS 26'

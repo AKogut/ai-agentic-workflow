@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-10-30T12:00:00Z",
+  "owner": "example",
+  "policy": { "cooldown_days": 3, "stale_pr_days": 7, "inactivity_warn_days": 45, "run_window": 30 },
+  "repos": [
+    {
+      "name": "alpha",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-10-29T10:00:00Z",
+        "html_url": "https://github.com/example/alpha",
+        "allow_auto_merge": true,
+        "delete_branch_on_merge": true
+      },
+      "prs": [
+        {
+          "number": 1,
+          "title": "chore(deps-dev): bump vite from 8.3.4 to 8.3.5",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-25T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/alpha/actions/runs/101/job/1" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/vite-8.3.5",
+          "url": "https://github.com/example/alpha/pull/1"
+        },
+        {
+          "number": 2,
+          "title": "chore(deps): bump @opentelemetry/core from 2.12.0 to 3.0.0",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-29T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/alpha/actions/runs/102/job/2" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/opentelemetry/core-3.0.0",
+          "url": "https://github.com/example/alpha/pull/2"
+        },
+        {
+          "number": 3,
+          "title": "chore(deps): bump the production group with 9 updates",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-25T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/example/alpha/actions/runs/103/job/3" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/production-abc123",
+          "url": "https://github.com/example/alpha/pull/3"
+        },
+        {
+          "number": 4,
+          "title": "chore(deps): bump zod from 4.1.0 to 4.2.0",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-25T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/alpha/actions/runs/104/job/4" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/zod-4.2.0",
+          "url": "https://github.com/example/alpha/pull/4"
+        },
+        {
+          "number": 5,
+          "title": "ci: move the runtime to Node 26 LTS",
+          "author": { "login": "example" },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/alpha/actions/runs/105/job/5" }
+          ],
+          "headRefName": "ci/node-26",
+          "url": "https://github.com/example/alpha/pull/5"
+        },
+        {
+          "number": 6,
+          "title": "chore(deps): bump undici from 7.1.0 to 7.1.1",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-25T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BLOCKED",
+          "statusCheckRollup": [
+            { "__typename": "CheckRun", "name": "ci", "status": "IN_PROGRESS", "conclusion": "", "detailsUrl": "https://github.com/example/alpha/actions/runs/106/job/6" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/undici-7.1.1",
+          "url": "https://github.com/example/alpha/pull/6"
+        }
+      ],
+      "workflows": [
+        { "id": 1, "name": "CI", "path": ".github/workflows/ci.yml", "state": "active" },
+        { "id": 2, "name": "Nightly", "path": ".github/workflows/nightly.yml", "state": "active" },
+        { "id": 3, "name": "Report", "path": ".github/workflows/report.yml", "state": "active" },
+        { "id": 4, "name": "Old nightly", "path": ".github/workflows/old-nightly.yml", "state": "disabled_inactivity" }
+      ],
+      "runs": {
+        "1": [
+          { "id": 11, "event": "push", "status": "completed", "conclusion": "failure", "created_at": "2026-10-29T09:00:00Z", "url": "https://github.com/example/alpha/actions/runs/11" },
+          { "id": 12, "event": "push", "status": "completed", "conclusion": "failure", "created_at": "2026-10-28T09:00:00Z", "url": "https://github.com/example/alpha/actions/runs/12" },
+          { "id": 13, "event": "push", "status": "completed", "conclusion": "success", "created_at": "2026-10-27T09:00:00Z", "url": "https://github.com/example/alpha/actions/runs/13" },
+          { "id": 14, "event": "push", "status": "completed", "conclusion": "success", "created_at": "2026-10-26T09:00:00Z", "url": "https://github.com/example/alpha/actions/runs/14" }
+        ],
+        "2": [
+          { "id": 21, "event": "schedule", "status": "completed", "conclusion": "success", "created_at": "2026-10-29T03:00:00Z", "url": "https://github.com/example/alpha/actions/runs/21" },
+          { "id": 22, "event": "schedule", "status": "completed", "conclusion": "failure", "created_at": "2026-10-28T03:00:00Z", "url": "https://github.com/example/alpha/actions/runs/22" },
+          { "id": 23, "event": "schedule", "status": "completed", "conclusion": "success", "created_at": "2026-10-27T03:00:00Z", "url": "https://github.com/example/alpha/actions/runs/23" }
+        ],
+        "3": [
+          { "id": 31, "event": "schedule", "status": "completed", "conclusion": "cancelled", "created_at": "2026-10-29T06:00:00Z", "url": "https://github.com/example/alpha/actions/runs/31" },
+          { "id": 32, "event": "schedule", "status": "completed", "conclusion": "success", "created_at": "2026-10-28T06:00:00Z", "url": "https://github.com/example/alpha/actions/runs/32" }
+        ]
+      },
+      "required_checks": ["ci"],
+      "alerts": {
+        "status": "ok",
+        "items": [
+          { "number": 1, "severity": "high", "package": "next", "summary": "SSRF in image optimization", "patched": "16.3.8", "url": "https://github.com/example/alpha/security/dependabot/1" }
+        ]
+      },
+      "dependabot_config": true,
+      "local_clone": { "path": "/tmp/alpha", "present": true }
+    },
+    {
+      "name": "beta",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-09-10T12:00:00Z",
+        "html_url": "https://github.com/example/beta",
+        "allow_auto_merge": false,
+        "delete_branch_on_merge": false
+      },
+      "prs": [
+        {
+          "number": 7,
+          "title": "chore(deps): bump axios from 1.12.0 to 1.12.1",
+          "author": { "login": "app/dependabot" },
+          "isDraft": false,
+          "createdAt": "2026-10-25T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            { "__typename": "StatusContext", "context": "build", "state": "SUCCESS", "targetUrl": "https://ci.example.com/build/7" }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/axios-1.12.1",
+          "url": "https://github.com/example/beta/pull/7"
+        }
+      ],
+      "workflows": [],
+      "runs": {},
+      "required_checks": [],
+      "alerts": { "status": "disabled", "items": [] },
+      "dependabot_config": false,
+      "local_clone": { "path": "/tmp/beta", "present": false }
+    },
+    {
+      "name": "gamma",
+      "error": "gh: Not Found (HTTP 404)"
+    }
+  ]
+}
