@@ -1,0 +1,17 @@
+{
+  "owner": "AKogut",
+  "policy": {
+    "cooldown_days": 3,
+    "stale_pr_days": 7,
+    "inactivity_warn_days": 45,
+    "run_window": 30
+  },
+  "repos": [
+    { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },
+    { "name": "ephemeral-k8s-test-envs", "path": "~/GitHubPersonal/ephemeral-k8s-test-envs" },
+    { "name": "flakemetry", "path": "~/GitHubPersonal/flakemetry" },
+    { "name": "mobile-task-manager-automation", "path": "~/GitHubPersonal/mobile-task-manager-automation" },
+    { "name": "playwright-ecommerce-framework", "path": "~/GitHubPersonal/playwright-ecommerce-framework" },
+    { "name": "restful-booker-api-testing", "path": "~/GitHubPersonal/restful-booker-api-testing" }
+  ]
+}

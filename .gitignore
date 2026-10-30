@@ -1,0 +1,7 @@
+# Discord webhook URLs: anyone holding one can post to the channel.
+.env
+
+# Run state written by scripts/collect.sh.
+.kohut/
+
+.claude/settings.local.json
