@@ -1,8 +1,8 @@
 <p align="center">
-  <img src=".github/assets/social-preview.png" alt="kohut, a repository maintenance agent: reviews Dependabot PRs, diagnoses red CI and audits hygiene across my portfolio" width="100%">
+  <img src=".github/assets/social-preview.png" alt="kogut, a repository maintenance agent: reviews Dependabot PRs, diagnoses red CI and audits hygiene across my portfolio" width="100%">
 </p>
 
-# kohut · ai-agentic-workflow
+# kogut · ai-agentic-workflow
 
 [![CI](https://github.com/AKogut/ai-agentic-workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/AKogut/ai-agentic-workflow/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -10,7 +10,7 @@
 [![Shell: bash + jq](https://img.shields.io/badge/shell-bash_%2B_jq-4EAA25?logo=gnubash&logoColor=white)](./scripts)
 [![Secrets: gitleaks](https://img.shields.io/badge/secrets-gitleaks-blue.svg)](./.gitleaks.toml)
 
-**kohut** is an agentic maintainer for my public portfolio repositories, built on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview). It reviews Dependabot pull requests, including the breaking changes that hide behind green CI. It also diagnoses failing workflows, audits repository hygiene, and posts a report for every repository to its own Discord channel.
+**kogut** is an agentic maintainer for my public portfolio repositories, built on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview). It reviews Dependabot pull requests, including the breaking changes that hide behind green CI. It also diagnoses failing workflows, audits repository hygiene, and posts a report for every repository to its own Discord channel.
 
 > **Status:** analysis and Discord reports run against six repositories. Next on the [roadmap](#roadmap) are merging Dependabot PRs through a guarded script and fixes opened only after approval.
 
@@ -22,13 +22,13 @@ Six public repositories, 43 workflows and a weekly stream of Dependabot PRs are 
 - a nightly report that has been red for a week
 - a major bump whose CI is green while the code it breaks is not exercised
 
-A bot that merges whatever is green would miss all three. kohut splits the work instead: **code decides everything that needs no judgement, and the model judges only what code can't.**
+A bot that merges whatever is green would miss all three. kogut splits the work instead: **code decides everything that needs no judgement, and the model judges only what code can't.**
 
 ## What it caught on its first run
 
 | Repository | Finding | Why "CI is green" was not enough |
 |---|---|---|
-| [flakemetry](https://github.com/AKogut/flakemetry) | OpenTelemetry v3 arrived as four Dependabot PRs, each of them green. v3 removes `@opentelemetry/sdk-trace-base`, which `packages/sdk` imports in three places. | Each PR passes on its own because `sdk-trace-base` stays on 2.x. kohut read the release notes, searched the code and held all four back until a migration lands. |
+| [flakemetry](https://github.com/AKogut/flakemetry) | OpenTelemetry v3 arrived as four Dependabot PRs, each of them green. v3 removes `@opentelemetry/sdk-trace-base`, which `packages/sdk` imports in three places. | Each PR passes on its own because `sdk-trace-base` stays on 2.x. kogut read the release notes, searched the code and held all four back until a migration lands. |
 | [restful-booker-api-testing](https://github.com/AKogut/restful-booker-api-testing) | `main` and the nightly report had been red for a week. | The cause was external: the hosted platform was unreachable, while the same suite passed against the dockerized target. The fix is a change of target, not of code. |
 | [mobile-task-manager-automation](https://github.com/AKogut/mobile-task-manager-automation) | The nightly E2E run had quietly stopped. | GitHub disables scheduled workflows after 60 days without activity. A disabled workflow produces no failures, so nothing was red. |
 
@@ -58,13 +58,13 @@ flowchart LR
 3. **Judge.** The model works only where judgement is needed:
    - For a major bump, it reads the release notes and searches the code for what changed.
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
-4. **Report.** Each repository gets one block: what kohut would do, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
+4. **Report.** Each repository gets one block: what kogut would do, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
 
 ## Security model
 
-kohut reads text written by strangers. Dependabot copies upstream release notes into its PRs verbatim, and CI logs can contain anything. The design assumes that text is hostile.
+kogut reads text written by strangers. Dependabot copies upstream release notes into its PRs verbatim, and CI logs can contain anything. The design assumes that text is hostile.
 
-- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kohut scripts. Repository edits and workflow changes are denied. Merges, `gh api`, `git push` and `curl` need the owner's approval.
+- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kogut scripts. Repository edits and workflow changes are denied. Merges, `gh api`, `git push` and `curl` need the owner's approval.
 - **Policy in code.** The model can hold a PR back but cannot merge past a blocker. The rules are covered by [tests](tests/run.sh).
 - **Secrets stay local.** Discord webhooks live in a gitignored `.env` that the model is denied from reading. [`notify.sh`](scripts/notify.sh) accepts only Discord URLs and never prints them. Mentions are disabled, so quoted text cannot ping anyone.
 - **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI.
@@ -74,11 +74,11 @@ The full threat table is in [SECURITY.md](SECURITY.md).
 
 ## Discord reports
 
-Each repository gets a report on every run, even when nothing needs doing. A quiet channel then means kohut did not run, not that all is well. An excerpt from a real run (reports are written in Ukrainian, my working language):
+Each repository gets a report on every run, even when nothing needs doing. A quiet channel then means kogut did not run, not that all is well. An excerpt from a real run:
 
 > **🟡 ai-flaky-test-triage**<br>
-> **Kohut змерджив би:** [#210](https://github.com/AKogut/ai-flaky-test-triage/pull/210) (vite 8.3.4 → 8.3.5, patch, перевірки зелені)<br>
-> **CI:** main зелений. Поодинокі збої за 30 запусків: CI 1/30, Dependabot Updates 1/30. Це нижче порогу, тож kohut їх не розслідував.<br>
+> **kogut would merge:** [#210](https://github.com/AKogut/ai-flaky-test-triage/pull/210) (vite 8.3.4 → 8.3.5, patch, checks green)<br>
+> **CI:** main is green. Isolated failures in the last 30 runs: CI 1/30, Dependabot Updates 1/30. That is below the threshold, so kogut did not investigate them.<br>
 > …
 
 ## Design decisions
@@ -97,35 +97,35 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 git clone https://github.com/AKogut/ai-agentic-workflow.git && cd ai-agentic-workflow
 cp .env.example .env              # one Discord webhook per repository
 ./scripts/notify.sh --check       # checks every webhook without posting
-claude                            # then run /kohut analyze
+claude                            # then run /kogut analyze
 ```
 
-Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq` and `curl`. The watched repositories and the paths of their local clones are listed in [`kohut.config.json`](kohut.config.json).
+Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq` and `curl`. The watched repositories and the paths of their local clones are listed in [`kogut.config.json`](kogut.config.json).
 
 | Command | What it does |
 |---|---|
-| `/kohut` | Analyses every repository, posts to Discord and prints the report |
-| `/kohut flakemetry` | Does the same for one repository |
-| `/kohut analyze` | Prints the report in the terminal only |
+| `/kogut` | Analyses every repository, posts to Discord and prints the report |
+| `/kogut flakemetry` | Does the same for one repository |
+| `/kogut analyze` | Prints the report in the terminal only |
 
 To run it from any directory:
 
 ```sh
-kohut() { (cd ~/GitHubPersonal/ai-agentic-workflow && claude "/kohut $*"); }
+kogut() { (cd ~/GitHubPersonal/ai-agentic-workflow && claude "/kogut $*"); }
 ```
 
 ## Repository layout
 
 ```
-.claude/skills/kohut/SKILL.md   the procedure /kohut follows: the judgement half
+.claude/skills/kogut/SKILL.md   the procedure /kogut follows: the judgement half
 .claude/settings.json           what the model may run, must ask for, never runs
-scripts/collect.sh              repository state → .kohut/state.json + signals
+scripts/collect.sh              repository state → .kogut/state.json + signals
 scripts/signals.jq              the policy: merge gate, CI health, hygiene
 scripts/failed-log.sh           the part of a failed run that explains it
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
 tests/run.sh                    policy tests against a fixed snapshot
-kohut.config.json               watched repositories and policy numbers
+kogut.config.json               watched repositories and policy numbers
 ```
 
 ## Development
@@ -140,7 +140,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 
 ## Roadmap
 
-- [x] **Analysis:** `/kohut analyze`, a read-only report
+- [x] **Analysis:** `/kogut analyze`, a read-only report
 - [x] **Discord:** a channel per repository
 - [ ] **Hygiene baseline:** required checks, auto-merge, Dependabot config and alerts in every watched repository
 - [ ] **Merging:** Dependabot PRs merged through a script that re-checks the policy itself

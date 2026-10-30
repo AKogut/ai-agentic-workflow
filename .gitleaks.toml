@@ -1,7 +1,7 @@
 # gitleaks: the default rules plus the one secret this project actually handles.
 # Discord webhook URLs live only in the gitignored .env; this rule makes sure
 # none ever reaches a commit, whether through the pre-commit hook or CI.
-title = "kohut"
+title = "kogut"
 
 [extend]
 useDefault = true

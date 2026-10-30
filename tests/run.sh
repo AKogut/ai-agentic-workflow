@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the policy in scripts/signals.jq against a fixed snapshot and checks
-# each rule. KOHUT_NOW pins the clock, so the ages in the fixture never drift.
+# each rule. KOGUT_NOW pins the clock, so the ages in the fixture never drift.
 #
 #   ./tests/run.sh
 # The single-quoted strings are jq programs, and their $variables belong to jq.
@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-signals="$(KOHUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixtures/state.json)"
+signals="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixtures/state.json)"
 helpers='
   def repo($n): .repos[] | select(.name == $n);
   def pr($r; $n): repo($r) | (.dependabot_prs + .other_prs)[] | select(.number == $n);

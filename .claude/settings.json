@@ -5,7 +5,7 @@
       "Bash(./scripts/failed-log.sh:*)",
       "Bash(./scripts/repo.sh:*)",
       "Bash(./scripts/notify.sh:*)",
-      "Edit(./.kohut/outbox/**)",
+      "Edit(./.kogut/outbox/**)",
       "Bash(jq:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",

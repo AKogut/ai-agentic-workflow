@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Posts a report to the Discord channel of one watched repository.
 #
-#   ./scripts/notify.sh <repo> <red|yellow|green>   # sends .kohut/outbox/<repo>.md
+#   ./scripts/notify.sh <repo> <red|yellow|green>   # sends .kogut/outbox/<repo>.md
 #   ./scripts/notify.sh --check                     # checks every webhook, posts nothing
 #
 # Webhook URLs come from .env (DISCORD_WEBHOOK_<REPO_IN_UPPER_SNAKE_CASE>) and
 # are never printed. Mentions are switched off, so text quoted from a PR cannot
-# ping anyone. A sent report is moved to .kohut/sent/.
+# ping anyone. A sent report is moved to .kogut/sent/.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-env_file="$KOHUT_ROOT/.env"
+env_file="$KOGUT_ROOT/.env"
 [ -f "$env_file" ] || die "missing .env with the Discord webhooks (see .env.example)"
 command -v curl >/dev/null || die "curl is not installed"
 
@@ -44,20 +44,20 @@ if [ "${1:-}" = "--check" ]; then
       echo "FAIL  $repo → HTTP $code"
       failed=1
     fi
-  done < <(kohut_repos)
+  done < <(kogut_repos)
   exit "$failed"
 fi
 
 [ $# -eq 2 ] || die "usage: notify.sh <repo> <red|yellow|green> | --check"
 repo="$1" status="$2"
-kohut_require_repo "$repo"
+kogut_require_repo "$repo"
 case "$status" in
   red) color=15158332 emoji="🔴" ;;
   yellow) color=15844367 emoji="🟡" ;;
   green) color=3066993 emoji="🟢" ;;
   *) die "status must be red, yellow or green: $status" ;;
 esac
-file="$KOHUT_ROOT/.kohut/outbox/$repo.md"
+file="$KOGUT_ROOT/.kogut/outbox/$repo.md"
 [ -s "$file" ] || die "nothing to send: $file is missing or empty"
 url="$(webhook_for "$repo")"
 
@@ -65,7 +65,7 @@ url="$(webhook_for "$repo")"
 # A long report is split on line boundaries; only the first part has a title.
 payloads="$(jq -Rs -c \
   --arg title "$emoji $repo" \
-  --arg link "https://github.com/$(kohut_owner)/$repo" \
+  --arg link "https://github.com/$(kogut_owner)/$repo" \
   --argjson color "$color" \
   --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
   def pieces($max): if length <= $max then . else range(0; length; $max) as $o | .[$o:$o + $max] end;
@@ -79,7 +79,7 @@ payloads="$(jq -Rs -c \
   | length as $n
   | to_entries[]
   | {
-      username: "kohut",
+      username: "kogut",
       allowed_mentions: {parse: []},
       embeds: [
         {description: .value, color: $color, timestamp: $now}
@@ -103,6 +103,6 @@ while IFS= read -r payload; do
   sent=$((sent + 1))
 done <<<"$payloads"
 
-mkdir -p "$KOHUT_ROOT/.kohut/sent"
-mv "$file" "$KOHUT_ROOT/.kohut/sent/$(date +%Y%m%d-%H%M%S)-$repo.md"
+mkdir -p "$KOGUT_ROOT/.kogut/sent"
+mv "$file" "$KOGUT_ROOT/.kogut/sent/$(date +%Y%m%d-%H%M%S)-$repo.md"
 echo "sent to Discord: $repo ($sent message(s))"
