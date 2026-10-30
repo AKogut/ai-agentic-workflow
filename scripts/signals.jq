@@ -156,6 +156,54 @@ def kogut_pr($owner; $app; $p):
         else "wait" end)
     };
 
+# Work for kogut. A task is either an issue the owner labelled kogut-task,
+# where only the owner adding that label counts (the latest label wins), so a
+# stranger cannot hand kogut work; or, with $auto, one of kogut's own issues
+# that the owner agreed it may take on without a label (see tasks below). A
+# kogut PR that names the issue carries the task on, and follow-ups take it
+# from there. Once kogut has answered on the issue, the task waits until the
+# owner speaks again.
+def task($owner; $app; $kogut_prs; $auto):
+  . as $t
+  | ([.labeled[]?] | sort_by(.at) | last) as $label
+  | [$kogut_prs[] | select((.body // "") | test("(?i)\\b(closes|fixes|resolves|refs) #\($t.number)\\b")) | .number] as $prs
+  | ([.comments[]? | select(.author.login | is_app($app)) | .createdAt] | max) as $answered
+  | ([$label.at, (.comments[]? | select(.author.login == $owner) | .createdAt)] | map(select(. != null)) | max) as $asked
+  | {
+      number, title, url,
+      author: .author.login,
+      labeled_by: $label.actor,
+      auto: $auto,
+      # A kogut issue keeps tracking its finding, so a PR refers to it rather than closing it.
+      finding: ((.body // "") | contains("<!-- kogut-finding:")),
+      prs: $prs,
+      needs: (
+        if ($auto | not) and $label.actor != $owner then "unauthorized"
+        elif $prs != [] then "in-progress"
+        elif $answered != null and $answered > $asked then "owner"
+        else "start" end)
+    };
+
+# The tasks of one repository: the issues the owner labelled, plus kogut's own
+# issues that it takes on unasked (agreed with the owner on 2026-10-30): its
+# alerts issue while a critical or high package has no Dependabot PR, and an
+# issue it opened for a major, which means a migration. Only issues the App
+# filed itself count, so a stranger cannot forge one by copying the marker.
+def finding_key: [(.body // "") | capture("<!-- kogut-finding: (?<k>.+?) -->").k][0];
+
+def tasks($r; $owner; $app):
+  . as $d
+  | [$r.prs[] | select(.author.login == "app/\($app)")] as $kprs
+  | [($r.tasks // [])[] | task($owner; $app; $kprs; false)] as $labelled
+  | ($d.findings | map({key, value: .}) | from_entries) as $found
+  | $labelled + [($r.kogut_issues // [])[]
+      | select(.author.login | is_app($app))
+      | . as $i | select([$labelled[].number] | index($i.number) | not)
+      | finding_key as $k
+      | select($k != null and $found[$k] != null)
+      | select(($k | startswith("major:")) or ($k == "alerts" and $found[$k].facts.uncovered != []))
+      | task($owner; $app; $kprs; true)];
+
 def other_pr($p):
   checks as $c
   | (.createdAt | days_since) as $age
@@ -214,7 +262,11 @@ def findings:
         | if $serious == [] then empty else
             {key: "alerts", kind: "alerts", auto: true,
              title: "Security: critical and high Dependabot alerts",
-             facts: {by_severity: $r.alerts.by_severity, packages: $serious}}
+             facts: {by_severity: $r.alerts.by_severity, packages: $serious,
+               # Packages no open Dependabot PR names: a fix for these has to come from kogut.
+               uncovered: [$serious[] | .package as $pkg
+                 | select([$r.dependabot_prs[] | (.bump.package // empty), .updates[].package] | index($pkg) | not)
+                 | .package]}}
           end),
       (if $r.hygiene_issues == [] then empty else
          {key: "hygiene", kind: "hygiene", auto: true,
@@ -301,5 +353,6 @@ def health($runs):
         ]
       }
     | . + {findings: findings}
+    | . + {tasks: tasks($r; $owner; $app)}
   end]
 }

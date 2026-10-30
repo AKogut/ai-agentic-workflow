@@ -64,7 +64,8 @@ flowchart LR
 4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The merge is made by `kogut-agent[bot]`, the script never passes `--admin`, and the owner approves every call.
 5. **Track.** [`issues.sh`](scripts/issues.sh) keeps one GitHub issue per finding: a red workflow, a disabled one, critical and high alerts, hygiene gaps, and the majors the model says need me. Each finding carries a stable key from `signals.jq`, so a run updates the issue's facts instead of opening a duplicate, and closes the issue with a comment once the finding is gone. The rules live in [`issues.jq`](scripts/issues.jq) and are tested. The model writes only the diagnosis. The issue list becomes kogut's memory between runs and a public record of what it found and closed.
 6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes. If the PR goes red, or I leave a review, the next run follows up: [`update-fix-pr.sh`](scripts/update-fix-pr.sh) pushes a commit on the same branch, or answers with a comment when no change is needed. Only my reviews count, and after three follow-up commits the PR is mine.
-7. **Report.** Each repository gets one block: what kogut merged, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
+7. **Take tasks.** I hand kogut work by labelling an issue `kogut-task`. `/kogut tasks` takes on maintenance and migrations: it opens a PR that closes the issue, or answers on the issue when the task is out of scope or unclear ([`task-reply.sh`](scripts/task-reply.sh)). Only a label I added counts, which `signals.jq` decides and the script checks again on GitHub. kogut also takes on two kinds of its own issues without a label: alerts that no Dependabot PR covers, and a major that needs a migration. I still approve each PR and merge it. Features stay out of kogut's scope.
+8. **Report.** Each repository gets one block: what kogut merged, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
 
 ## Security model
 
@@ -119,6 +120,7 @@ Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an
 | `/kogut flakemetry` | Does the same for one repository |
 | `/kogut analyze` | Prints the report in the terminal only |
 | `/kogut fix flakemetry <what>` | Opens one fix as a pull request from `kogut-agent[bot]` |
+| `/kogut tasks` | Takes on the issues I labelled `kogut-task`: a PR, or an answer on the issue |
 
 To run it from any directory:
 
@@ -141,6 +143,7 @@ scripts/fix-start.sh            a worktree at origin's default branch for one fi
 scripts/open-fix-pr.sh          the only way kogut opens a PR: gitleaks, then the App's commit
 scripts/update-fix-pr.sh        a follow-up commit or an answer on kogut's own PR, within a limit
 scripts/pr-feedback.sh          the owner's reviews on a kogut PR; nobody else's words
+scripts/task-reply.sh           kogut's answer on a task it cannot start yet
 scripts/app.sh                  registers the GitHub App and checks its installation
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
@@ -152,7 +155,7 @@ kogut.config.json               watched repositories and policy numbers
 
 ```sh
 git config core.hooksPath .githooks   # gitleaks scans every commit
-./tests/run.sh                        # 55 policy checks
+./tests/run.sh                        # 66 policy checks
 shellcheck scripts/*.sh tests/*.sh
 ```
 
@@ -168,7 +171,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Identity:** a GitHub App, so the agent's work and mine stay apart in the history
 - [x] **Issues:** one issue per finding, updated every run and closed once the finding is gone
 - [x] **Follow-up:** kogut takes its own PRs to green and answers review comments
-- [ ] **Tasks:** issues labelled `kogut` by the owner become PRs
+- [x] **Tasks:** issues the owner labels `kogut-task` become PRs, within maintenance and migrations
 - [ ] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix
 
 ## License

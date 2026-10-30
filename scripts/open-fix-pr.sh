@@ -2,7 +2,12 @@
 # Opens a fix started with fix-start.sh as a PR from the kogut App. The commit
 # and the PR show as <slug>[bot], and the owner reviews and merges on GitHub.
 #
-#   ./scripts/open-fix-pr.sh <repo> <slug> [--workflows] [--dry-run]
+#   ./scripts/open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue>] [--dry-run]
+#
+# --task links the PR to a task the owner handed kogut (an issue the owner
+# labelled kogut-task, which is checked on GitHub first) and says so on the
+# issue. The PR closes the task when it merges, unless the issue is one kogut
+# files for a finding, which closes on its own once the finding is gone.
 #
 # The owner approves each call, so run it with --dry-run first: that prints the
 # PR text and the diff, and stops. A fix that changes .github/workflows/ needs
@@ -18,20 +23,27 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-usage="usage: open-fix-pr.sh <repo> <slug> [--workflows] [--dry-run]"
+usage="usage: open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue>] [--dry-run]"
 [ $# -ge 2 ] || die "$usage"
 repo="$1" slug="$2"
 shift 2
 kogut_require_repo "$repo"
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{1,48}$ ]] || die "not a fix slug: $slug"
-workflows=false dry_run=false
-for arg in "$@"; do
-  case "$arg" in
+workflows=false dry_run=false task=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --workflows) workflows=true ;;
     --dry-run) dry_run=true ;;
+    --task)
+      [ $# -ge 2 ] || die "$usage"
+      task="$2"
+      shift
+      ;;
     *) die "$usage" ;;
   esac
+  shift
 done
+[ -z "$task" ] || [[ "$task" =~ ^[0-9]+$ ]] || die "a task is an issue number: $task"
 worktree="$KOGUT_ROOT/.kogut/fixes/$repo/$slug"
 text="$worktree.md"
 [ -d "$worktree" ] || die "there is no fix $repo/$slug: start it with fix-start.sh"
@@ -43,9 +55,16 @@ full="$(kogut_owner)/$repo"
 base_branch="$(kogut_default_branch "$repo")"
 base="$(git -C "$worktree" rev-parse HEAD)"
 branch="kogut/$slug"
+link=""
+if [ -n "$task" ]; then
+  # Assigned first: inside [ "$(…)" = … ] a refused check would not stop the script.
+  kind="$(kogut_task_check "$full" "$task")"
+  if [ "$kind" = finding ]; then link="Refs #$task"; else link="Closes #$task"; fi
+fi
 
 if [ "$dry_run" = true ]; then
   echo "PR: $title"
+  [ -z "$link" ] || echo "task: $link"
   echo "into: $full $base_branch at ${base:0:7}, from $branch, as $(kogut_app_bot)"
   echo "--- files"
   kogut_show_diff "$worktree"
@@ -69,13 +88,19 @@ commit="$(kogut_api_commit "$full" "$worktree" "$title")"
 gh api -X POST "repos/$full/git/refs" -f ref="refs/heads/$branch" -f sha="$commit" >/dev/null
 
 {
-  printf '%s\n\n---\n' "$body"
+  printf '%s\n\n' "$body"
+  [ -z "$link" ] || printf '%s\n\n' "$link"
+  printf -- '---\n'
   printf '<sub>Opened by [kogut](%s), the maintenance agent for this portfolio. %s reviews and merges.</sub>\n' \
     "$(jq -r '.app.homepage' "$KOGUT_CONFIG")" "$(kogut_owner)"
 } >"$body_file"
 if ! url="$(gh pr create -R "$full" --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file")"; then
   gh api -X DELETE "repos/$full/git/refs/heads/$branch" >/dev/null 2>&1 || true
   die "could not open the PR; the branch $branch was deleted again"
+fi
+
+if [ -n "$task" ]; then
+  gh api -X POST "repos/$full/issues/$task/comments" -f body="kogut opened $url for this task." >/dev/null
 fi
 
 git -C "$(kogut_repo_path "$repo")" worktree remove --force "$worktree"

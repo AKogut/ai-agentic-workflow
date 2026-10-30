@@ -104,6 +104,25 @@ collect_repo() {
     echo '{"status": "unavailable", "items": []}' >"$dir/alerts.json"
   fi
 
+  # Tasks: open issues labelled kogut-task, with who added the label (only the
+  # owner can hand kogut work) and their comments, which show whether kogut
+  # has answered.
+  gh issue list -R "$full" --state open --label kogut-task --limit 20 \
+    --json number,title,body,author,url,comments >"$dir/tasks.json"
+  local n
+  for n in $(jq -r '.[].number' "$dir/tasks.json"); do
+    gh api "repos/$full/issues/$n/events?per_page=100" \
+      --jq '[.[] | select(.event == "labeled" and .label.name == "kogut-task") | {actor: .actor.login, at: .created_at}]' \
+      >"$dir/task-$n.json"
+    jq --argjson n "$n" --slurpfile labeled "$dir/task-$n.json" \
+      'map(if .number == $n then . + {labeled: $labeled[0]} else . end)' \
+      "$dir/tasks.json" >"$dir/tasks.tmp" && mv "$dir/tasks.tmp" "$dir/tasks.json"
+  done
+
+  # kogut's own open issues: it takes some of them on as tasks without a label.
+  gh issue list -R "$full" --state open --label kogut --author "app/$(kogut_app_slug)" --limit 50 \
+    --json number,title,body,author,url,comments >"$dir/kogut-issues.json"
+
   local dependabot_config=false
   if gh api "repos/$full/contents/.github/dependabot.yml" --silent 2>/dev/null ||
     gh api "repos/$full/contents/.github/dependabot.yaml" --silent 2>/dev/null; then
@@ -123,6 +142,8 @@ collect_repo() {
     --slurpfile runs "$dir/runs.json" \
     --slurpfile required "$dir/required.json" \
     --slurpfile alerts "$dir/alerts.json" \
+    --slurpfile tasks "$dir/tasks.json" \
+    --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
     --argjson local_clone "$local_clone" \
@@ -135,6 +156,8 @@ collect_repo() {
       runs: $runs[0],
       required_checks: $required[0],
       alerts: $alerts[0],
+      tasks: $tasks[0],
+      kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,
       local_clone: {path: $path, present: $local_clone}
     }'

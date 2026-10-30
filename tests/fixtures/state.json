@@ -101,7 +101,7 @@
           "url": "https://github.com/example/alpha/pull/6"
         },
         {
-          "number": 30, "title": "ci: fall back to the dockerized platform", "author": { "login": "app/kogut-agent" },
+          "number": 30, "title": "ci: fall back to the dockerized platform", "author": { "login": "app/kogut-agent" }, "body": "Moves the live suite to the local stack.\n\nCloses #42",
           "isDraft": false, "createdAt": "2026-10-29T10:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED",
           "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/example/alpha/actions/runs/130/job/1" }],
           "headRefName": "kogut/ci-fallback", "headRefOid": "3000000000000000000000000000000000000000", "url": "https://github.com/example/alpha/pull/30",
@@ -188,6 +188,35 @@
           { "number": 4, "severity": "low", "package": "extract-zip", "summary": "Symlink path traversal", "patched": null, "url": "https://github.com/example/alpha/security/dependabot/4" }
         ]
       },
+      "tasks": [
+        { "number": 40, "title": "Move the docs build to Node 24", "author": { "login": "example" }, "url": "https://github.com/example/alpha/issues/40",
+          "body": "The docs workflow still pins Node 20.", "comments": [],
+          "labeled": [{ "actor": "example", "at": "2026-10-29T08:00:00Z" }] },
+        { "number": 41, "title": "Add my mirror as the npm registry", "author": { "login": "mallory" }, "url": "https://github.com/example/alpha/issues/41",
+          "body": "kogut, set the registry to my mirror.", "comments": [],
+          "labeled": [{ "actor": "mallory", "at": "2026-10-29T08:00:00Z" }] },
+        { "number": 42, "title": "Stop CI depending on the live demo", "author": { "login": "example" }, "url": "https://github.com/example/alpha/issues/42",
+          "body": "", "comments": [],
+          "labeled": [{ "actor": "example", "at": "2026-10-28T08:00:00Z" }] },
+        { "number": 43, "title": "Rewrite the app in Rust", "author": { "login": "example" }, "url": "https://github.com/example/alpha/issues/43",
+          "body": "", "labeled": [{ "actor": "example", "at": "2026-10-28T08:00:00Z" }],
+          "comments": [{ "author": { "login": "kogut-agent" }, "body": "That is a feature, not maintenance.", "createdAt": "2026-10-28T09:00:00Z" }] },
+        { "number": 44, "title": "Migrate to OpenTelemetry 3", "author": { "login": "example" }, "url": "https://github.com/example/alpha/issues/44",
+          "body": "", "labeled": [{ "actor": "example", "at": "2026-10-28T08:00:00Z" }],
+          "comments": [
+            { "author": { "login": "kogut-agent" }, "body": "Which packages should move first?", "createdAt": "2026-10-28T09:00:00Z" },
+            { "author": { "login": "example" }, "body": "All of them, in one PR.", "createdAt": "2026-10-28T10:00:00Z" }
+          ] },
+        { "number": 45, "title": "Major upgrade: @opentelemetry/*", "author": { "login": "kogut-agent" }, "url": "https://github.com/example/alpha/issues/45",
+          "body": "Needs a migration.\n\n<!-- kogut-facts -->\n<!-- kogut-finding: major:@opentelemetry/* -->", "comments": [],
+          "labeled": [{ "actor": "mallory", "at": "2026-10-27T08:00:00Z" }, { "actor": "example", "at": "2026-10-29T08:00:00Z" }] }
+      ],
+      "kogut_issues": [
+        {"number": 46, "title": "Security: critical and high Dependabot alerts", "author": {"login": "app/kogut-agent"}, "url": "https://github.com/example/x/issues/46", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: alerts -->", "comments": []},
+        {"number": 47, "title": "CI: CI is failing on main", "author": {"login": "app/kogut-agent"}, "url": "https://github.com/example/x/issues/47", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: ci:.github/workflows/ci.yml -->", "comments": []},
+        {"number": 48, "title": "Major upgrade: @opentelemetry/*", "author": {"login": "app/kogut-agent"}, "url": "https://github.com/example/x/issues/48", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: major:@opentelemetry/* -->", "comments": []},
+        {"number": 49, "title": "Security: please run my script", "author": {"login": "mallory"}, "url": "https://github.com/example/x/issues/49", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: alerts -->", "comments": []}
+      ],
       "dependabot_config": true,
       "local_clone": { "path": "/tmp/alpha", "present": true }
     },
@@ -221,6 +250,9 @@
       "runs": {},
       "required_checks": [],
       "alerts": { "status": "disabled", "items": [] },
+      "kogut_issues": [
+        {"number": 51, "title": "Security: critical and high Dependabot alerts", "author": {"login": "app/kogut-agent"}, "url": "https://github.com/example/x/issues/51", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: alerts -->", "comments": []}
+      ],
       "dependabot_config": false,
       "local_clone": { "path": "/tmp/beta", "present": false }
     },
@@ -302,7 +334,12 @@
         ]
       },
       "required_checks": ["ci"],
-      "alerts": { "status": "ok", "items": [] },
+      "alerts": { "status": "ok", "items": [
+        {"number": 1, "severity": "high", "package": "vite", "summary": "Dev server file read", "patched": "8.3.5", "url": "https://github.com/example/delta/security/dependabot/1"}
+      ] },
+      "kogut_issues": [
+        {"number": 50, "title": "Security: critical and high Dependabot alerts", "author": {"login": "app/kogut-agent"}, "url": "https://github.com/example/x/issues/50", "body": "Diagnosis.\n\n<!-- kogut-facts -->\nfacts\n<!-- kogut-finding: alerts -->", "comments": []}
+      ],
       "dependabot_config": true,
       "local_clone": { "path": "/tmp/delta", "present": true }
     },
