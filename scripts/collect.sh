@@ -3,9 +3,10 @@
 #
 #   ./scripts/collect.sh [repo ...]
 #
-# Writes the raw snapshot to .kogut/state.json and prints the signals digest
-# computed from it by signals.jq: per repository, only what needs attention.
-# The digest is compact JSON, so it fits in one read; pipe it to jq to browse.
+# Writes the raw snapshot to .kogut/state.json, or to $KOGUT_STATE when set, and
+# prints the signals digest computed from it by signals.jq: per repository, only
+# what needs attention. The digest is compact JSON, so it fits in one read; pipe
+# it to jq to browse.
 # Read-only — nothing on GitHub is changed.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
@@ -55,7 +56,7 @@ collect_repo() {
   last_commit="$(api_or null "repos/$full/commits/$branch" --jq '.commit.committer.date | tojson')"
 
   gh pr list -R "$full" --state open --limit 100 \
-    --json number,title,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,url \
+    --json number,title,body,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,url \
     >"$dir/prs.json"
 
   gh api "repos/$full/actions/workflows?per_page=100" \
@@ -143,8 +144,8 @@ for i in "${!repos[@]}"; do
   fi
 done
 
-mkdir -p "$KOGUT_ROOT/.kogut"
-state="$KOGUT_ROOT/.kogut/state.json"
+state="${KOGUT_STATE:-$KOGUT_ROOT/.kogut/state.json}"
+mkdir -p "$(dirname "$state")"
 for r in "${repos[@]}"; do cat "$tmp/$r.json"; done |
   jq -s --arg owner "$owner" --slurpfile config "$KOGUT_CONFIG" \
     '{generated_at: (now | todate), owner: $owner, policy: $config[0].policy, repos: .}' >"$state"

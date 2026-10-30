@@ -26,7 +26,7 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 - Scripts are bash, `gh` and `jq`, and must work with macOS bash 3.2. Run `shellcheck scripts/*.sh tests/*.sh` after changing them.
 - A rule changed or added in `signals.jq` gets a check in `tests/run.sh`. Run `./tests/run.sh`.
 - `main` takes pull requests only (ruleset `main`: squash, linear history, required checks `Lint`, `Policy tests` and `Secret scan`). All seven portfolio repositories use the same ruleset, and the repository admin can bypass it on pull requests only. `gh pr merge` is an `ask` rule here, so the owner approves every merge, and it never carries `--admin`. Commits are authored by the owner, with no co-author trailer.
-- kogut runs on the owner's token, and that token carries the admin bypass. The merge script (roadmap step 4) must never pass `--admin`, and must refuse to merge unless the gate in `signals.jq` says the PR is ready.
+- kogut runs on the owner's token, and that token carries the admin bypass. `scripts/merge-dependabot.sh` never passes `--admin` and refuses to merge unless the gate in `signals.jq` says the PR is ready; keep it that way. `gh pr merge` with `--admin` is denied in `.claude/settings.json`.
 - This repository is public. Nothing personal or secret goes into it: webhooks stay in `.env`, and run output stays in `.kogut/`.
 - Everything is in English: reports, Discord posts, code, docs and commits.
 
@@ -35,5 +35,5 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 1. Done: `/kogut analyze`, a read-only report in the terminal.
 2. Done: Discord. `/kogut` posts each repository's report to its own channel.
 3. Phase 0: required checks, auto-merge, Dependabot config and alerts in every repository.
-4. Merging Dependabot PRs through a guarded script.
+4. Done: merging Dependabot PRs through `scripts/merge-dependabot.sh`, with the owner's approval for each merge.
 5. Fixes in a worktree, opened as PRs after the owner approves.

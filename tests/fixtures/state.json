@@ -45,6 +45,7 @@
         {
           "number": 3,
           "title": "chore(deps): bump the production group with 9 updates",
+          "body": "Bumps the production group with 2 updates:\n\nUpdates `next` from 16.4.2 to 16.4.3\nUpdates `@aws-sdk/client-s3` from 3.1152.0 to 3.1152.1\n",
           "author": { "login": "app/dependabot" },
           "isDraft": false,
           "createdAt": "2026-10-25T12:00:00Z",
@@ -167,6 +168,70 @@
       "alerts": { "status": "disabled", "items": [] },
       "dependabot_config": false,
       "local_clone": { "path": "/tmp/beta", "present": false }
+    },
+    {
+      "name": "delta",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-10-29T10:00:00Z",
+        "html_url": "https://github.com/example/delta",
+        "allow_auto_merge": true,
+        "delete_branch_on_merge": true,
+        "last_commit_at": "2026-10-29T10:00:00Z"
+      },
+      "prs": [
+        {
+          "number": 11, "title": "chore(deps): bump @opentelemetry/core from 2.12.0 to 3.0.0", "body": "Bumps [@opentelemetry/core](https://github.com/open-telemetry/opentelemetry-js) from 2.12.0 to 3.0.0.",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/211" }],
+          "headRefName": "dependabot/npm_and_yarn/opentelemetry/core-3.0.0", "url": "https://github.com/example/delta/pull/11"
+        },
+        {
+          "number": 12, "title": "chore(deps): bump the production group with 3 updates",
+          "body": "Bumps the production group with 3 updates:\n\nUpdates `@opentelemetry/exporter-trace-otlp-http` from 0.223.0 to 0.300.0\r\nUpdates `next` from 16.4.2 to 16.4.3\nUpdates `typescript-eslint` from 8.71.2 to 8.72.0\n<details><summary>Release notes</summary><blockquote><p>Updates `next` from 16.4.2 to 16.4.3</p></blockquote></details>\n",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/212" }],
+          "headRefName": "dependabot/npm_and_yarn/production-1a2b3c", "url": "https://github.com/example/delta/pull/12"
+        },
+        {
+          "number": 13, "title": "chore(deps-dev): bump the development group with 2 updates",
+          "body": "Bumps the development group with 2 updates: tsdown and turbo.\nUpdates `tsdown` from 0.23.1 to 0.23.2\nUpdates `turbo` from 2.11.9 to 2.11.10\n",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/213" }],
+          "headRefName": "dependabot/npm_and_yarn/development-4d5e6f", "url": "https://github.com/example/delta/pull/13"
+        },
+        {
+          "number": 14, "title": "chore(deps): bump left-pad from 0.0.3 to 0.0.4", "body": "Bumps left-pad from 0.0.3 to 0.0.4.",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/214" }],
+          "headRefName": "dependabot/npm_and_yarn/left-pad-0.0.4", "url": "https://github.com/example/delta/pull/14"
+        },
+        {
+          "number": 15, "title": "chore(deps): Bump body-parser from 2.3.0 to 2.4.0 in /app/gateway", "body": "Bumps body-parser from 2.3.0 to 2.4.0.",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/215" }],
+          "headRefName": "dependabot/npm_and_yarn/app/gateway/body-parser-2.4.0", "url": "https://github.com/example/delta/pull/15"
+        },
+        {
+          "number": 16, "title": "build(deps): bump brace-expansion",
+          "body": "Bumps  and [brace-expansion](https://github.com/juliangruber/brace-expansion). These dependencies needed to be updated together.\nUpdates `brace-expansion` from 1.1.14 to 1.1.21\nUpdates `brace-expansion` from 5.0.6 to 5.0.12\n",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/216" }],
+          "headRefName": "dependabot/npm_and_yarn/multi-7a8b9c", "url": "https://github.com/example/delta/pull/16"
+        },
+        {
+          "number": 17, "title": "chore(deps): bump the npm group across 1 directory", "body": "Bumps the npm group in / with updates.",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/217" }],
+          "headRefName": "dependabot/npm_and_yarn/npm-0d1e2f", "url": "https://github.com/example/delta/pull/17"
+        }
+      ],
+      "workflows": [],
+      "runs": {},
+      "required_checks": ["ci"],
+      "alerts": { "status": "ok", "items": [] },
+      "dependabot_config": true,
+      "local_clone": { "path": "/tmp/delta", "present": true }
     },
     {
       "name": "gamma",

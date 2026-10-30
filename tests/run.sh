@@ -46,6 +46,31 @@ check "patch, minor and major are read from the title" \
   '[pr("alpha"; 1, 4, 2) | .bump.semver] == ["patch", "minor", "major"]'
 check "a group PR carries no single version" \
   'pr("alpha"; 3) | .bump == null'
+check "a capitalised Bump with a directory suffix is read" \
+  'pr("delta"; 15) | .bump == {package: "body-parser", from: "2.3.0", to: "2.4.0", semver: "minor"}'
+check "below 1.0 the first non-zero part is the major" \
+  '[pr("delta"; 14) | .semver] + [pr("delta"; 12) | .updates[0].semver] == ["major", "major"]'
+check "a patch below 1.0 stays a patch" \
+  'pr("delta"; 13) | .updates[0] | .semver == "patch" and .package == "tsdown"'
+check "a group PR lists the updates from its body, not from quoted release notes" \
+  'pr("delta"; 12) | .updates | map(.package)
+     == ["@opentelemetry/exporter-trace-otlp-http", "next", "typescript-eslint"]'
+check "a group PR is rated by its riskiest update" \
+  '[pr("delta"; 12, 13) | .semver] == ["major", "patch"]'
+check "a title without versions falls back to the body" \
+  'pr("delta"; 16) | .bump == null and .semver == "patch" and .ready_to_merge'
+check "a PR whose versions cannot be read is never ready" \
+  'pr("delta"; 17) | .semver == null and .blockers == ["no versions in the title or the body"]'
+
+echo
+echo "majors split across PRs"
+check "PRs that take one npm scope to a new major point at each other" \
+  '[pr("delta"; 11, 12) | .belongs_with] == [[12], [11]]'
+check "neither part of a split major is ready on its own" \
+  'pr("delta"; 11) | (.ready_to_merge | not)
+     and .blockers == ["major split across PRs: take it together with #12"]'
+check "a lone major and green patches are not held back" \
+  '[pr("delta"; 13, 14) | .belongs_with == [] and .ready_to_merge] == [true, true]'
 
 echo
 echo "pull requests"
