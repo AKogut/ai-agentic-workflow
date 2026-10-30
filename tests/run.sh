@@ -13,6 +13,7 @@ helpers='
   def repo($n): .repos[] | select(.name == $n);
   def pr($r; $n): repo($r) | (.dependabot_prs + .other_prs)[] | select(.number == $n);
   def pr_k($r; $n): repo($r) | .kogut_prs[] | select(.number == $n);
+  def task($r; $n): repo($r) | .tasks[] | select(.number == $n);
 '
 
 passed=0
@@ -98,6 +99,21 @@ check "feedback kogut already answered is settled, under its comment name" \
   'pr_k("alpha"; 33) | .needs == "review" and .feedback == []'
 check "only feedback from the owner counts, and an approval asks for nothing" \
   'pr_k("alpha"; 34) | .needs == "review" and .feedback == []'
+
+echo
+echo "tasks the owner hands kogut"
+check "a task the owner labelled is ready to start" \
+  'task("alpha"; 40) | .needs == "start" and .labeled_by == "example"'
+check "a label from anyone else hands kogut nothing" \
+  'task("alpha"; 41) | .needs == "unauthorized"'
+check "the latest label counts, and a kogut issue is known as one" \
+  'task("alpha"; 45) | .needs == "start" and .finding'
+check "a kogut PR that names the task carries it on" \
+  'task("alpha"; 42) | .needs == "in-progress" and .prs == [30]'
+check "once kogut has answered, the task waits for the owner" \
+  'task("alpha"; 43) | .needs == "owner"'
+check "a reply from the owner hands the task back to kogut" \
+  'task("alpha"; 44) | .needs == "start"'
 
 echo
 echo "workflows on the default branch"

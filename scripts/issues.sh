@@ -88,10 +88,16 @@ for repo in $names; do
     --argjson texts "$texts" --arg today "$today" --arg home "$homepage" \
     'include "issues"; plan($d; $issues; $texts; $today; $home)')"
 
-  if [ "$dry_run" = false ] && jq -e 'any(.[]; .action == "open")' <<<"$plan" >/dev/null; then
-    GH_TOKEN="$token" gh api "repos/$full/labels/$label" >/dev/null 2>&1 ||
-      GH_TOKEN="$token" gh api -X POST "repos/$full/labels" -f name="$label" -f color=5319e7 \
-        -f description="Tracked by kogut, the maintenance agent" >/dev/null
+  # kogut-task is the label the owner hands kogut work with, so it has to exist
+  # before the owner can pick it.
+  if [ "$dry_run" = false ]; then
+    (
+      export GH_TOKEN="$token"
+      kogut_ensure_label "$full" kogut-task 0e8a16 "A task for kogut, the maintenance agent; only the owner's label counts"
+      if jq -e 'any(.[]; .action == "open")' <<<"$plan" >/dev/null; then
+        kogut_ensure_label "$full" "$label" 5319e7 "Tracked by kogut, the maintenance agent"
+      fi
+    )
   fi
 
   # Majors wait for the model's word, so the ones it left alone are one line.

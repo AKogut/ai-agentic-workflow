@@ -133,6 +133,30 @@ kogut_api_commit() {
     gh api -X POST "repos/$full/git/commits" --input - --jq .sha
 }
 
+# Checks, on GitHub as it is now, that issue $2 is an open task the owner
+# handed kogut: labelled kogut-task, and the latest such label added by the
+# owner. Prints "finding" for an issue kogut files for a finding, which keeps
+# tracking it and closes on its own, and "task" for any other.
+kogut_task_check() {
+  local full="$1" number="$2" issue actor
+  issue="$(gh api "repos/$full/issues/$number")"
+  [ "$(jq -r '.state' <<<"$issue")" = open ] || die "#$number is not open"
+  jq -e '.pull_request == null' <<<"$issue" >/dev/null || die "#$number is a PR, not an issue"
+  jq -e 'any(.labels[]; .name == "kogut-task")' <<<"$issue" >/dev/null || die "#$number is not labelled kogut-task"
+  actor="$(gh api "repos/$full/issues/$number/events?per_page=100" \
+    --jq '[.[] | select(.event == "labeled" and .label.name == "kogut-task")] | sort_by(.created_at) | last | .actor.login')"
+  [ "$actor" = "$(kogut_owner)" ] || die "#$number was labelled kogut-task by $actor, not by the owner"
+  if jq -e '(.body // "") | contains("<!-- kogut-finding:")' <<<"$issue" >/dev/null; then echo finding; else echo task; fi
+}
+
+# Creates a label in a repository unless it is there already. Needs GH_TOKEN
+# exported with the App's token.
+kogut_ensure_label() {
+  local full="$1" name="$2" color="$3" description="$4"
+  gh api "repos/$full/labels/$name" >/dev/null 2>&1 ||
+    gh api -X POST "repos/$full/labels" -f name="$name" -f color="$color" -f description="$description" >/dev/null
+}
+
 # The kogut GitHub App (scripts/app.sh registers it). The id is empty until then.
 kogut_app_id() { jq -r '.app.id // empty' "$KOGUT_CONFIG"; }
 kogut_app_slug() { jq -r '.app.slug' "$KOGUT_CONFIG"; }

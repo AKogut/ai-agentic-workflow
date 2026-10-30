@@ -20,13 +20,16 @@
       "Bash(gh workflow list:*)",
       "Bash(gh workflow view:*)",
       "Bash(gh release view:*)",
-      "Bash(gh release list:*)"
+      "Bash(gh release list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)"
     ],
     "ask": [
       "Bash(./scripts/merge-dependabot.sh:*)",
       "Bash(./scripts/open-fix-pr.sh:*)",
       "Bash(./scripts/update-fix-pr.sh:*)",
       "Bash(./scripts/issues.sh:*)",
+      "Bash(./scripts/task-reply.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr close:*)",

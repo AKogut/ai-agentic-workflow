@@ -42,5 +42,5 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 5. Done: fixes in a worktree (`/kogut fix`), opened by `kogut-agent[bot]` after the owner approves, and merged by the owner.
 6. Done: issues as kogut's memory. `scripts/issues.sh` keeps one issue per finding (keys from `signals.jq`, policy in `issues.jq`) and closes it once the finding is gone.
 7. Done: follow-up. `kogut_prs[]` in `signals.jq` says what each of kogut's PRs needs, and only the owner's reviews count. `scripts/update-fix-pr.sh` pushes a follow-up commit (fast-forward only, up to `policy.followup_limit`) or answers with a comment.
-8. Tasks: issues the owner labels `kogut` become PRs. The scope is maintenance plus migrations, unless the owner widens it.
+8. Done: tasks. Issues the owner labels `kogut-task` become PRs (`open-fix-pr.sh --task`) or answers (`task-reply.sh`). Only the owner's label counts, as `tasks[]` in `signals.jq` decides and `kogut_task_check` verifies on GitHub. The scope is maintenance plus migrations, never features (decided by the owner on 2026-10-30).
 9. Lockfile fixes: `overrides` plus `npm install --package-lock-only --ignore-scripts` in a fix worktree, for transitive alerts (approved by the owner on 2026-10-30).

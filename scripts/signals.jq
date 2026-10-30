@@ -156,6 +156,31 @@ def kogut_pr($owner; $app; $p):
         else "wait" end)
     };
 
+# Work the owner handed kogut: open issues labelled kogut-task. Only the owner
+# adding that label makes a task, so a stranger cannot hand kogut work by
+# labelling an issue; the latest label counts. A kogut PR that names the issue
+# carries the task on (follow-ups take it from there). Once kogut has answered
+# on the issue, the task waits until the owner speaks again.
+def task($owner; $app; $kogut_prs):
+  . as $t
+  | ([.labeled[]?] | sort_by(.at) | last) as $label
+  | [$kogut_prs[] | select((.body // "") | test("(?i)\\b(closes|fixes|resolves|refs) #\($t.number)\\b")) | .number] as $prs
+  | ([.comments[]? | select(.author.login | is_app($app)) | .createdAt] | max) as $answered
+  | ([$label.at, (.comments[]? | select(.author.login == $owner) | .createdAt)] | map(select(. != null)) | max) as $asked
+  | {
+      number, title, url,
+      author: .author.login,
+      labeled_by: $label.actor,
+      # A kogut issue keeps tracking its finding, so a PR refers to it rather than closing it.
+      finding: ((.body // "") | contains("<!-- kogut-finding:")),
+      prs: $prs,
+      needs: (
+        if $label.actor != $owner then "unauthorized"
+        elif $prs != [] then "in-progress"
+        elif $answered != null and $answered > $asked then "owner"
+        else "start" end)
+    };
+
 def other_pr($p):
   checks as $c
   | (.createdAt | days_since) as $age
@@ -265,6 +290,7 @@ def health($runs):
         dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot") | dependabot_pr($required; $p)] | split_majors),
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
+        tasks: [(.tasks // [])[] | task($owner; $app; [$r.prs[] | select(.author.login == "app/\($app)")])],
         ci_failing: [$active[] | select(.health.streak > 0) | {
           name, path,
           failing_streak: .health.streak,
