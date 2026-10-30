@@ -224,6 +224,12 @@
           "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
           "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/217" }],
           "headRefName": "dependabot/npm_and_yarn/npm-0d1e2f", "url": "https://github.com/example/delta/pull/17"
+        },
+        {
+          "number": 18, "title": "chore(deps-dev): bump vite from 8.3.4 to 8.3.5", "body": "Bumps vite from 8.3.4 to 8.3.5.",
+          "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-25T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND",
+          "statusCheckRollup": [{ "__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/example/delta/actions/runs/218" }],
+          "headRefName": "dependabot/npm_and_yarn/vite-8.3.5", "url": "https://github.com/example/delta/pull/18"
         }
       ],
       "workflows": [],

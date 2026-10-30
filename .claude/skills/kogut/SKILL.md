@@ -68,7 +68,7 @@ For every Dependabot PR you judged "would merge", run `./scripts/merge-dependabo
 
 - The script collects the repository afresh and merges only when the gate says `ready_to_merge`, pinned to the head commit it judged. When it refuses, report its reason; do not try another way.
 - If the owner declines a merge, report the PR as declined and do not ask again in this run.
-- A merge can leave the repository's other PRs needing a rebase. Dependabot does that on its own, and the script refuses them until then.
+- A merge can leave the repository's other Dependabot PRs in conflict, usually over the lockfile. Dependabot rebases a conflicting PR on its own, and the script refuses it until then. A PR that is only behind the default branch is never rebased on its own. When the ruleset requires branches to be up to date, the gate blocks such a PR; report it, and say that `@dependabot rebase` on the PR fixes it.
 
 ### 4. Report
 
