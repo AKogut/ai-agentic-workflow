@@ -63,7 +63,7 @@ flowchart LR
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
 4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The merge is made by `kogut-agent[bot]`, the script never passes `--admin`, and the owner approves every call.
 5. **Track.** [`issues.sh`](scripts/issues.sh) keeps one GitHub issue per finding: a red workflow, a disabled one, critical and high alerts, hygiene gaps, and the majors the model says need me. Each finding carries a stable key from `signals.jq`, so a run updates the issue's facts instead of opening a duplicate, and closes the issue with a comment once the finding is gone. The rules live in [`issues.jq`](scripts/issues.jq) and are tested. The model writes only the diagnosis. The issue list becomes kogut's memory between runs and a public record of what it found and closed.
-6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes. If the PR goes red, or I leave a review, the next run follows up: [`update-fix-pr.sh`](scripts/update-fix-pr.sh) pushes a commit on the same branch, or answers with a comment when no change is needed. Only my reviews count, and after three follow-up commits the PR is mine.
+6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. When the change touches a manifest, for example an `overrides` entry for a transitive alert that Dependabot cannot move, [`fix-lockfile.sh`](scripts/fix-lockfile.sh) regenerates the lockfile with npm or pnpm in lockfile-only mode, with scripts off, and shows which locked versions changed. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes. If the PR goes red, or I leave a review, the next run follows up: [`update-fix-pr.sh`](scripts/update-fix-pr.sh) pushes a commit on the same branch, or answers with a comment when no change is needed. Only my reviews count, and after three follow-up commits the PR is mine.
 7. **Take tasks.** I hand kogut work by labelling an issue `kogut-task`. `/kogut tasks` takes on maintenance and migrations: it opens a PR that closes the issue, or answers on the issue when the task is out of scope or unclear ([`task-reply.sh`](scripts/task-reply.sh)). Only a label I added counts, which `signals.jq` decides and the script checks again on GitHub. kogut also takes on two kinds of its own issues without a label: alerts that no Dependabot PR covers, and a major that needs a migration. I still approve each PR and merge it. Features stay out of kogut's scope.
 8. **Report.** Each repository gets one block: what kogut merged, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
 
@@ -75,7 +75,7 @@ kogut reads text written by strangers. Dependabot copies upstream release notes 
 - **Its own identity.** On GitHub kogut acts as a GitHub App, `kogut-agent`. It can write code, pull requests, issues and workflow files in the six watched repositories, and nothing else. It is not on any ruleset's bypass list, so unlike my own token it cannot merge past a red check. A script that acts on GitHub refuses to run without the App's token rather than fall back to mine. The App's private key lives outside the repository with mode 600, and the model is denied from reading it.
 - **Policy in code.** The model can hold a PR back but cannot merge past a blocker. The rules are covered by [tests](tests/run.sh).
 - **Secrets stay local.** Discord webhooks live in a gitignored `.env` that the model is denied from reading. [`notify.sh`](scripts/notify.sh) accepts only Discord URLs and never prints them. Mentions are disabled, so quoted text cannot ping anyone.
-- **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI.
+- **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI. A fix that changes a manifest gets its lockfile regenerated in lockfile-only mode: no `node_modules`, no lifecycle scripts, no pnpmfile hooks, so no package code runs here.
 - **`main` is protected.** It takes pull requests only, through squash merges. CI must pass first: lint, policy tests, and a gitleaks scan of the full history. Force pushes are blocked. Only the owner can override a red check, and only on a pull request, never with a direct push. Every portfolio repository uses the same ruleset.
 
 The full threat table is in [SECURITY.md](SECURITY.md).
@@ -112,7 +112,7 @@ cp .env.example .env              # one Discord webhook per repository
 claude                            # then run /kogut analyze
 ```
 
-Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq`, `curl`, `openssl` and [`gitleaks`](https://github.com/gitleaks/gitleaks). The watched repositories and the paths of their local clones are listed in [`kogut.config.json`](kogut.config.json), along with the App's id. An App registered by hand is stored with `./scripts/app.sh import <id>`.
+Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq`, `curl`, `openssl` and [`gitleaks`](https://github.com/gitleaks/gitleaks), plus `npm` and the `pnpm` version a repository's `packageManager` names, for lockfile fixes. The watched repositories and the paths of their local clones are listed in [`kogut.config.json`](kogut.config.json), along with the App's id. An App registered by hand is stored with `./scripts/app.sh import <id>`.
 
 | Command | What it does |
 |---|---|
@@ -142,6 +142,7 @@ scripts/issues.jq               the issue policy: when to open, update, keep, sk
 scripts/fix-start.sh            a worktree at origin's default branch for one fix
 scripts/open-fix-pr.sh          the only way kogut opens a PR: gitleaks, then the App's commit
 scripts/update-fix-pr.sh        a follow-up commit or an answer on kogut's own PR, within a limit
+scripts/fix-lockfile.sh         lockfile-only npm or pnpm in a fix's worktree, with a version summary
 scripts/pr-feedback.sh          the owner's reviews on a kogut PR; nobody else's words
 scripts/task-reply.sh           kogut's answer on a task it cannot start yet
 scripts/app.sh                  registers the GitHub App and checks its installation
@@ -172,7 +173,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Issues:** one issue per finding, updated every run and closed once the finding is gone
 - [x] **Follow-up:** kogut takes its own PRs to green and answers review comments
 - [x] **Tasks:** issues the owner labels `kogut-task` become PRs, within maintenance and migrations
-- [ ] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix
+- [x] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix, with the lockfile regenerated in lockfile-only mode
 
 ## License
 
