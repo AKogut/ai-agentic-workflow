@@ -16,7 +16,8 @@ Reports that matter most here are ways to make kohut act beyond its policy: prom
 | Mass pings through quoted text | Every Discord message is sent with mentions disabled. |
 | Secrets committed by mistake | A [pre-commit hook](.githooks/pre-commit) and a CI job scan with gitleaks, including a rule for Discord webhooks. GitHub secret scanning and push protection are enabled. |
 | A malicious package in a Dependabot update | Dependabot branches are never installed or run locally, only in GitHub's CI. A 3-day cooldown applies before an update counts as ready. |
-| Unreviewed changes to `main` | A ruleset allows changes only through pull requests that pass the required checks: squash merges, linear history, no force pushes, no deletion. |
+| Unreviewed changes to `main` | A ruleset allows changes only through pull requests that pass the required checks: squash merges, linear history, no force pushes, no deletion. Only the owner can override a red check, and only on a pull request. |
+| kohut merging past a red check with the owner's token | The owner's override travels with the token kohut runs on. Raw `gh pr merge` stays denied, and merges will go only through a script that never passes `--admin`. |
 
 ## Supported versions
 
