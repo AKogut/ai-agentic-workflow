@@ -5,6 +5,7 @@
 #
 # Writes the raw snapshot to .kohut/state.json and prints the signals digest
 # computed from it by signals.jq: per repository, only what needs attention.
+# The digest is compact JSON, so it fits in one read; pipe it to jq to browse.
 # Read-only — nothing on GitHub is changed.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
@@ -47,6 +48,12 @@ collect_repo() {
   gh api "repos/$full" >"$dir/repo.json"
   branch="$(jq -r '.default_branch' "$dir/repo.json")"
 
+  # pushed_at moves with a push to any branch, but scheduled workflows stop
+  # after 60 days without commits on the default branch, so idleness is
+  # measured from its head.
+  local last_commit
+  last_commit="$(api_or null "repos/$full/commits/$branch" --jq '.commit.committer.date | tojson')"
+
   gh pr list -R "$full" --state open --limit 100 \
     --json number,title,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,url \
     >"$dir/prs.json"
@@ -71,13 +78,15 @@ collect_repo() {
       --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]'
   } | jq -s 'add | unique' >"$dir/required.json"
 
+  # A repository can have more than one page of alerts. --jq runs once per
+  # page, so it emits single alerts and jq -s gathers them.
   local alerts
-  if alerts="$(gh api "repos/$full/dependabot/alerts?state=open&per_page=100" \
-    --jq '[.[] | {number, severity: .security_advisory.severity, package: .dependency.package.name,
+  if alerts="$(gh api --paginate "repos/$full/dependabot/alerts?state=open&per_page=100" \
+    --jq '.[] | {number, severity: .security_advisory.severity, package: .dependency.package.name,
             summary: .security_advisory.summary,
-            patched: .security_vulnerability.first_patched_version.identifier, url: .html_url}]' \
+            patched: .security_vulnerability.first_patched_version.identifier, url: .html_url}' \
     2>"$dir/alerts.err")"; then
-    jq -n --argjson items "$alerts" '{status: "ok", items: $items}' >"$dir/alerts.json"
+    jq -s '{status: "ok", items: .}' <<<"$alerts" >"$dir/alerts.json"
   elif grep -q 'disabled' "$dir/alerts.err"; then
     echo '{"status": "disabled", "items": []}' >"$dir/alerts.json"
   else
@@ -103,11 +112,13 @@ collect_repo() {
     --slurpfile runs "$dir/runs.json" \
     --slurpfile required "$dir/required.json" \
     --slurpfile alerts "$dir/alerts.json" \
+    --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
     --argjson local_clone "$local_clone" \
     '{
       name: $name,
-      repo: ($repo[0] | {default_branch, pushed_at, html_url, allow_auto_merge, delete_branch_on_merge}),
+      repo: ($repo[0] | {default_branch, pushed_at, html_url, allow_auto_merge, delete_branch_on_merge}
+        + {last_commit_at: $last_commit}),
       prs: $prs[0],
       workflows: $workflows[0],
       runs: $runs[0],
@@ -138,4 +149,4 @@ for r in "${repos[@]}"; do cat "$tmp/$r.json"; done |
   jq -s --arg owner "$owner" --slurpfile config "$KOHUT_CONFIG" \
     '{generated_at: (now | todate), owner: $owner, policy: $config[0].policy, repos: .}' >"$state"
 
-jq -f "$KOHUT_ROOT/scripts/signals.jq" "$state"
+jq -c -f "$KOHUT_ROOT/scripts/signals.jq" "$state"

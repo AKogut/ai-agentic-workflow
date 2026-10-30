@@ -33,7 +33,8 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 - `dependabot_prs[]`: `bump.semver` (`major`, `minor`, `patch`; `bump` is null for group PRs), `checks`, `blockers`, `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
 - `other_prs[]`: the owner's own PRs.
 - `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`.
-- `alerts[]`, `hygiene`, `hygiene_issues[]`.
+- `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert. The individual alerts are in `.kohut/state.json`.
+- `hygiene`, `hygiene_issues[]`.
 - `error`: collection failed for that repository. Report it and move on.
 
 ### 2. Analyse
@@ -52,13 +53,13 @@ Spend effort where judgement is needed and stay brief elsewhere.
   - `infra`: runner, workflow configuration, secrets or toolchain.
   - `flaky`: the same code passes and fails.
 
-  When the log is not enough, read the workflow or test with `./scripts/repo.sh <repo> show <path>`. Propose the smallest fix that removes the cause: which file, what change, and why. Do not write the change.
+  For each failed job the script prints its error annotations and the log lines before each error. A log over 5 MB is not downloaded; the script prints the job's link instead, so work from the annotations and the failed step. When the log is not enough, read the workflow or test with `./scripts/repo.sh <repo> show <path>`. Propose the smallest fix that removes the cause: which file, what change, and why. Do not write the change.
 
   For `external`, waiting is a fix only for the first couple of days. Once a workflow has been red longer than that, propose how the repository can stop depending on the outage: a local target, a mock, or a skip that says why. Check whether the repository already has a local alternative, for example another workflow that passes against a local stack.
 - **Flaky.** Give the counts. Investigate only when a workflow failed 3 or more times in the window.
 - **Disabled workflows.** Give the reason: `disabled_inactivity` means 60 days without activity in the repository. Re-enabling it is the fix.
 - **The owner's PRs.** Do not review them. Mention a PR if it is red (which check, plus one line on why if the log makes it obvious) or stale.
-- **Alerts.** List the open ones with severity, and the Dependabot PR that fixes each, if there is one.
+- **Alerts.** Give the counts by severity. Name the critical and high packages, each with the Dependabot PR that fixes it, if there is one.
 - **Hygiene.** List `hygiene_issues` as they are.
 
 ### 3. Report

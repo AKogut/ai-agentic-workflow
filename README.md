@@ -132,7 +132,7 @@ kohut.config.json               watched repositories and policy numbers
 
 ```sh
 git config core.hooksPath .githooks   # gitleaks scans every commit
-./tests/run.sh                        # 18 policy checks
+./tests/run.sh                        # 23 policy checks
 shellcheck scripts/*.sh tests/*.sh
 ```
 

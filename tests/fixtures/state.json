@@ -10,7 +10,8 @@
         "pushed_at": "2026-10-29T10:00:00Z",
         "html_url": "https://github.com/example/alpha",
         "allow_auto_merge": true,
-        "delete_branch_on_merge": true
+        "delete_branch_on_merge": true,
+        "last_commit_at": "2026-10-29T10:00:00Z"
       },
       "prs": [
         {
@@ -125,7 +126,10 @@
       "alerts": {
         "status": "ok",
         "items": [
-          { "number": 1, "severity": "high", "package": "next", "summary": "SSRF in image optimization", "patched": "16.3.8", "url": "https://github.com/example/alpha/security/dependabot/1" }
+          { "number": 1, "severity": "high", "package": "next", "summary": "SSRF in image optimization", "patched": "16.3.8", "url": "https://github.com/example/alpha/security/dependabot/1" },
+          { "number": 2, "severity": "medium", "package": "next", "summary": "Cache poisoning in middleware", "patched": "16.3.9", "url": "https://github.com/example/alpha/security/dependabot/2" },
+          { "number": 3, "severity": "critical", "package": "shell-quote", "summary": "Command injection in quote()", "patched": "1.11.0", "url": "https://github.com/example/alpha/security/dependabot/3" },
+          { "number": 4, "severity": "low", "package": "extract-zip", "summary": "Symlink path traversal", "patched": null, "url": "https://github.com/example/alpha/security/dependabot/4" }
         ]
       },
       "dependabot_config": true,
@@ -135,10 +139,11 @@
       "name": "beta",
       "repo": {
         "default_branch": "main",
-        "pushed_at": "2026-09-10T12:00:00Z",
+        "pushed_at": "2026-10-29T12:00:00Z",
         "html_url": "https://github.com/example/beta",
         "allow_auto_merge": false,
-        "delete_branch_on_merge": false
+        "delete_branch_on_merge": false,
+        "last_commit_at": "2026-09-10T12:00:00Z"
       },
       "prs": [
         {
