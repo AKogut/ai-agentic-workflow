@@ -95,7 +95,8 @@ collect_repo() {
   if alerts="$(gh api --paginate "repos/$full/dependabot/alerts?state=open&per_page=100" \
     --jq '.[] | {number, severity: .security_advisory.severity, package: .dependency.package.name,
             summary: .security_advisory.summary,
-            patched: .security_vulnerability.first_patched_version.identifier, url: .html_url}' \
+            patched: .security_vulnerability.first_patched_version.identifier, url: .html_url,
+            manifest: .dependency.manifest_path}' \
     2>"$dir/alerts.err")"; then
     jq -s '{status: "ok", items: .}' <<<"$alerts" >"$dir/alerts.json"
   elif grep -q 'disabled' "$dir/alerts.err"; then
