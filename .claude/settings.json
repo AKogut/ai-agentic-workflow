@@ -7,6 +7,7 @@
       "Bash(./scripts/notify.sh:*)",
       "Bash(./scripts/fix-start.sh:*)",
       "Bash(./scripts/app.sh check)",
+      "Bash(./scripts/pr-feedback.sh:*)",
       "Edit(./.kogut/outbox/**)",
       "Edit(./.kogut/fixes/**)",
       "Bash(jq:*)",
@@ -24,6 +25,7 @@
     "ask": [
       "Bash(./scripts/merge-dependabot.sh:*)",
       "Bash(./scripts/open-fix-pr.sh:*)",
+      "Bash(./scripts/update-fix-pr.sh:*)",
       "Bash(./scripts/issues.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(gh pr create:*)",

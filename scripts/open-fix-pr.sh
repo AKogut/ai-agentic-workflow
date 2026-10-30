@@ -35,29 +35,9 @@ done
 worktree="$KOGUT_ROOT/.kogut/fixes/$repo/$slug"
 text="$worktree.md"
 [ -d "$worktree" ] || die "there is no fix $repo/$slug: start it with fix-start.sh"
-[ -s "$text" ] || die "the PR text is missing: $text"
-
-# kogut maintains and does not build features, so the title must use one of
-# the maintenance types of Conventional Commits.
-title="$(head -n 1 "$text")"
-title_re='^(fix|ci|build|chore|docs|test)(\([a-z0-9._/-]+\))?: .+$'
-[[ "$title" =~ $title_re ]] || die "the title must be a maintenance Conventional Commit (fix, ci, build, chore, docs, test): $title"
-[ "${#title}" -le 72 ] || die "the title is longer than 72 characters"
-[ -z "$(sed -n 2p "$text")" ] || die "the second line of $text must be blank"
+title="$(kogut_fix_title "$text")"
 body="$(tail -n +3 "$text")"
-[ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "the PR body is empty"
-
-git -C "$worktree" add -A
-changed="$(git -C "$worktree" diff --cached --name-only --no-renames HEAD)"
-[ -n "$changed" ] || die "fix $repo/$slug changes nothing"
-if grep -q '^\.github/workflows/' <<<"$changed"; then
-  [ "$workflows" = true ] || die "the fix changes .github/workflows/: pass --workflows"
-else
-  [ "$workflows" = false ] || die "the fix changes no workflow: drop --workflows"
-fi
-
-{ git -C "$worktree" diff --cached --unified=0 HEAD; cat "$text"; } | kogut_scan ||
-  die "gitleaks flagged the fix; nothing was sent"
+kogut_stage "$worktree" "$workflows" "$text"
 
 full="$(kogut_owner)/$repo"
 base_branch="$(kogut_default_branch "$repo")"
@@ -68,9 +48,7 @@ if [ "$dry_run" = true ]; then
   echo "PR: $title"
   echo "into: $full $base_branch at ${base:0:7}, from $branch, as $(kogut_app_bot)"
   echo "--- files"
-  git -C "$worktree" diff --cached --stat HEAD
-  echo "--- diff"
-  git -C "$worktree" diff --cached HEAD | awk 'NR <= 400 { print } END { if (NR > 400) print "... " NR - 400 " more lines" }'
+  kogut_show_diff "$worktree"
   echo "--- body"
   printf '%s\n' "$body"
   echo "not opened: --dry-run"
@@ -85,30 +63,9 @@ export GH_TOKEN="$token"
 
 ! gh api "repos/$full/git/ref/heads/$branch" >/dev/null 2>&1 || die "branch $branch already exists on $full"
 
-entries="$(mktemp)" body_file="$(mktemp)"
-trap 'rm -f "$entries" "$body_file"' EXIT
-while IFS= read -r -d '' status && IFS= read -r -d '' path; do
-  case "$path" in -* | *$'\n'* | *$'\t'*) die "refusing an unusual path: $path" ;; esac
-  if [ "$status" = D ]; then
-    read -r mode _ <<<"$(git -C "$worktree" ls-tree HEAD -- "$path")"
-    jq -cn --arg p "$path" --arg m "$mode" '{path: $p, mode: $m, type: "blob", sha: null}'
-  else
-    read -r mode sha _ <<<"$(git -C "$worktree" ls-files -s -- "$path")"
-    [ "$mode" != 160000 ] || die "refusing a submodule change: $path"
-    blob="$(git -C "$worktree" cat-file blob "$sha" | base64 | tr -d '\n' |
-      jq -Rs '{content: ., encoding: "base64"}' |
-      gh api -X POST "repos/$full/git/blobs" --input - --jq .sha)"
-    [ "$blob" = "$sha" ] || die "GitHub stored $path as $blob, not $sha"
-    jq -cn --arg p "$path" --arg m "$mode" --arg s "$blob" '{path: $p, mode: $m, type: "blob", sha: $s}'
-  fi
-done < <(git -C "$worktree" diff --cached --name-status -z --no-renames HEAD) >"$entries"
-
-tree="$(jq -s --arg base "$(git -C "$worktree" rev-parse 'HEAD^{tree}')" '{base_tree: $base, tree: .}' "$entries" |
-  gh api -X POST "repos/$full/git/trees" --input - --jq .sha)"
-staged="$(git -C "$worktree" write-tree)"
-[ "$tree" = "$staged" ] || die "GitHub built tree $tree, but the staged tree is $staged; nothing was opened"
-commit="$(jq -n --arg m "$title" --arg t "$tree" --arg p "$base" '{message: $m, tree: $t, parents: [$p]}' |
-  gh api -X POST "repos/$full/git/commits" --input - --jq .sha)"
+body_file="$(mktemp)"
+trap 'rm -f "$body_file"' EXIT
+commit="$(kogut_api_commit "$full" "$worktree" "$title")"
 gh api -X POST "repos/$full/git/refs" -f ref="refs/heads/$branch" -f sha="$commit" >/dev/null
 
 {

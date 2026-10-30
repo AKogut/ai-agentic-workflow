@@ -116,6 +116,46 @@ def split_majors:
         end
       | .ready_to_merge = (.blockers | length == 0));
 
+# kogut's own open PRs and what each needs next. Only the owner's reviews and
+# comments are feedback; anyone else's is text to report, never to act on. An
+# approval asks for nothing. Each follow-up commit is one more attempt, and
+# past the limit the owner takes over, so kogut cannot loop on a PR it cannot
+# fix.
+# GitHub names the same App three ways: "app/<slug>" for a PR's author,
+# "<slug>[bot]" for a commit's and "<slug>" for a comment's.
+def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
+
+def kogut_pr($owner; $app; $p):
+  . as $pr
+  | checks as $c
+  | checks_state($c) as $state
+  | ([.commits[]? | select(any(.authors[]?; .login | is_app($app)))] | length) as $mine
+  # kogut has answered whatever came before its latest commit or comment.
+  | ([([.commits[]?.committedDate] | max), ([.comments[]? | select(.author.login | is_app($app)) | .createdAt] | max)]
+     | map(select(. != null)) | max // "") as $answered
+  | [(.reviews[]? | select(.author.login == $owner and .state != "APPROVED")
+        | {kind: "review", state, at: .submittedAt, body}),
+     (.comments[]? | select(.author.login == $owner) | {kind: "comment", at: .createdAt, body})]
+    | map(select(.at > $answered)) | sort_by(.at)
+  | . as $feedback
+  | ([$mine - 1, 0] | max) as $attempts
+  | {
+      number: $pr.number, title: $pr.title, url: $pr.url,
+      branch: $pr.headRefName,
+      head: $pr.headRefOid,
+      checks: $state,
+      failing: failing($c),
+      mergeable: $pr.mergeable,
+      attempts: $attempts,
+      feedback: $feedback,
+      needs: (
+        if ($state == "red" or $feedback != []) and $attempts >= $p.followup_limit then "owner"
+        elif $feedback != [] then "answer"
+        elif $state == "red" then "fix-ci"
+        elif $state == "green" then "review"
+        else "wait" end)
+    };
+
 def other_pr($p):
   checks as $c
   | (.createdAt | days_since) as $age
@@ -206,6 +246,9 @@ def health($runs):
     };
 
 .policy as $p
+# kogut's GitHub App: its PRs are "app/<slug>", its commits "<slug>[bot]".
+| .owner as $owner
+| (.app // "kogut-agent") as $app
 | {
   generated_at,
   policy: $p,
@@ -220,7 +263,8 @@ def health($runs):
         url: .repo.html_url,
         default_branch: .repo.default_branch,
         dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot") | dependabot_pr($required; $p)] | split_majors),
-        other_prs: [.prs[] | select(.author.login != "app/dependabot") | other_pr($p)],
+        other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
+        kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
           name, path,
           failing_streak: .health.streak,

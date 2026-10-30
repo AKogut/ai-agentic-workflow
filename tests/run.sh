@@ -12,6 +12,7 @@ signals="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixture
 helpers='
   def repo($n): .repos[] | select(.name == $n);
   def pr($r; $n): repo($r) | (.dependabot_prs + .other_prs)[] | select(.number == $n);
+  def pr_k($r; $n): repo($r) | .kogut_prs[] | select(.number == $n);
 '
 
 passed=0
@@ -82,6 +83,21 @@ check "the owner's PRs are kept apart and go stale after 7 days" \
   'repo("alpha") | (.other_prs | map(.number)) == [5] and (.other_prs[0] | .stale and .author == "example")'
 check "commit statuses count as checks, like check runs" \
   'pr("beta"; 7) | .checks == "green"'
+
+echo
+echo "kogut's own PRs"
+check "kogut's PRs are kept apart from the owner's" \
+  'repo("alpha") | ([.other_prs[].number] == [5]) and ([.kogut_prs[].number] == [30, 31, 32, 33, 34])'
+check "a red kogut PR needs a follow-up commit" \
+  'pr_k("alpha"; 30) | .needs == "fix-ci" and .attempts == 0'
+check "a review by the owner asks kogut for an answer" \
+  'pr_k("alpha"; 31) | .needs == "answer" and (.feedback | map(.kind)) == ["review"]'
+check "past the follow-up limit the owner takes over" \
+  'pr_k("alpha"; 32) | .needs == "owner" and .attempts == 3'
+check "feedback kogut already answered is settled, under its comment name" \
+  'pr_k("alpha"; 33) | .needs == "review" and .feedback == []'
+check "only feedback from the owner counts, and an approval asks for nothing" \
+  'pr_k("alpha"; 34) | .needs == "review" and .feedback == []'
 
 echo
 echo "workflows on the default branch"
