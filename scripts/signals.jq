@@ -91,6 +91,11 @@ def dependabot_pr($required; $p):
             | "required check '\($name)' did not run")
         else empty end),
         (if .mergeable != "MERGEABLE" then "mergeable: \(.mergeable)" else empty end),
+        # A ruleset that wants branches up to date refuses a PR that is behind,
+        # and Dependabot rebases on its own only when its PR conflicts.
+        (if .mergeStateStatus == "BEHIND" then
+          "behind the default branch: the ruleset wants it up to date, and Dependabot rebases only on conflicts"
+        else empty end),
         (if .isDraft then "draft" else empty end),
         (if $age < $p.cooldown_days then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
         (if $semver == null then "no versions in the title or the body" else empty end)

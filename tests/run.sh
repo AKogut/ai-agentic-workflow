@@ -39,6 +39,9 @@ check "a check still running leaves the PR pending" \
   'pr("alpha"; 6) | .checks == "pending" and (.ready_to_merge | not)'
 check "without required checks nothing is ever ready" \
   'pr("beta"; 7) | .checks == "green" and .blockers == ["no required checks on the default branch"]'
+check "a green PR behind the default branch is held back" \
+  'pr("delta"; 18) | .checks == "green" and (.ready_to_merge | not) and .blockers
+     == ["behind the default branch: the ruleset wants it up to date, and Dependabot rebases only on conflicts"]'
 
 echo
 echo "version bumps"
