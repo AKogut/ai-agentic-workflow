@@ -12,7 +12,7 @@
 
 **kogut** is an agentic maintainer for my public portfolio repositories, built on [Claude Code](https://docs.claude.com/en/docs/claude-code/overview). It reviews Dependabot pull requests, including the breaking changes that hide behind green CI. It also diagnoses failing workflows, audits repository hygiene, and posts a report for every repository to its own Discord channel.
 
-> **Status:** analysis and Discord reports run against six repositories. Next on the [roadmap](#roadmap) are merging Dependabot PRs through a guarded script and fixes opened only after approval.
+> **Status:** analysis, Discord reports and guarded Dependabot merges run against six repositories. Next on the [roadmap](#roadmap) are fixes opened only after approval.
 
 ## Why
 
@@ -54,17 +54,18 @@ flowchart LR
 ```
 
 1. **Collect.** [`collect.sh`](scripts/collect.sh) reads every watched repository with `gh` in about 25 seconds, without a model: open PRs and their checks, each workflow's run history on the default branch, required checks from branch protection and rulesets, Dependabot alerts and settings.
-2. **Apply the policy.** [`signals.jq`](scripts/signals.jq) reduces that state to signals, and the merge gate lives here. A Dependabot PR is ready only when every required check has passed, it is mergeable and it is at least three days old. A repository without required checks never has a ready PR, because "green" means nothing there.
+2. **Apply the policy.** [`signals.jq`](scripts/signals.jq) reduces that state to signals, and the merge gate lives here. A Dependabot PR is ready only when every required check has passed, it is mergeable and it is at least three days old. A repository without required checks never has a ready PR, because "green" means nothing there. A group PR is rated by every update Dependabot lists in its body, a minor below 1.0 counts as a major, a PR whose versions cannot be read is never ready, and a major that one npm scope takes across several PRs blocks each of them.
 3. **Judge.** The model works only where judgement is needed:
    - For a major bump, it reads the release notes and searches the code for what changed.
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
-4. **Report.** Each repository gets one block: what kogut would do, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
+4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The script never passes `--admin`, and the owner approves every call.
+5. **Report.** Each repository gets one block: what kogut merged, what needs the owner, CI, hygiene and a TL;DR. The report goes to the terminal and to the repository's Discord channel.
 
 ## Security model
 
 kogut reads text written by strangers. Dependabot copies upstream release notes into its PRs verbatim, and CI logs can contain anything. The design assumes that text is hostile.
 
-- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kogut scripts. Repository edits and workflow changes are denied. Merges, `gh api`, `git push` and `curl` need the owner's approval.
+- **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kogut scripts. Repository edits, workflow changes and `gh pr merge --admin` are denied. Merges, `gh api`, `git push` and `curl` need the owner's approval.
 - **Policy in code.** The model can hold a PR back but cannot merge past a blocker. The rules are covered by [tests](tests/run.sh).
 - **Secrets stay local.** Discord webhooks live in a gitignored `.env` that the model is denied from reading. [`notify.sh`](scripts/notify.sh) accepts only Discord URLs and never prints them. Mentions are disabled, so quoted text cannot ping anyone.
 - **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI.
@@ -122,6 +123,7 @@ kogut() { (cd ~/GitHubPersonal/ai-agentic-workflow && claude "/kogut $*"); }
 scripts/collect.sh              repository state → .kogut/state.json + signals
 scripts/signals.jq              the policy: merge gate, CI health, hygiene
 scripts/failed-log.sh           the part of a failed run that explains it
+scripts/merge-dependabot.sh     the only way kogut merges: re-checks the gate, never --admin
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
 tests/run.sh                    policy tests against a fixed snapshot
@@ -132,7 +134,7 @@ kogut.config.json               watched repositories and policy numbers
 
 ```sh
 git config core.hooksPath .githooks   # gitleaks scans every commit
-./tests/run.sh                        # 23 policy checks
+./tests/run.sh                        # 33 policy checks
 shellcheck scripts/*.sh tests/*.sh
 ```
 
@@ -143,7 +145,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Analysis:** `/kogut analyze`, a read-only report
 - [x] **Discord:** a channel per repository
 - [ ] **Hygiene baseline:** required checks, auto-merge, Dependabot config and alerts in every watched repository
-- [ ] **Merging:** Dependabot PRs merged through a script that re-checks the policy itself
+- [x] **Merging:** Dependabot PRs merged through a script that re-checks the policy itself
 - [ ] **Fixes:** prepared in a worktree and opened as a PR after the owner approves
 
 ## License

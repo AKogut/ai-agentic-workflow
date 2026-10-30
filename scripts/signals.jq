@@ -27,28 +27,58 @@ def checks_state($checks):
 
 def failing($checks): [$checks[] | select(.result | bad_result) | {name, url}];
 
-# "bump x from 1.2.3 to 2.0.0" → {from, to, semver}. Null for group PRs, whose
-# title carries no versions.
+# How far a version change reaches. Below 1.0 the first non-zero part is the
+# major, as in npm's caret ranges: 0.223 → 0.300 and 0.0.3 → 0.0.4 can break
+# like 2.x → 3.0 does.
+def semver_change($from; $to):
+  ($from | split(".")) as $f | ($to | split(".")) as $t
+  | ($f[1] // "0") as $fm | ($f[2] // "0") as $fp
+  | if $f[0] != $t[0] then "major"
+    elif $f[0] == "0" and $fm != ($t[1] // "0") then "major"
+    elif $f[0] == "0" and $fm == "0" and $fp != ($t[2] // "0") then "major"
+    elif $fm != ($t[1] // "0") then "minor"
+    else "patch" end;
+
+def semver_rank: {patch: 1, minor: 2, major: 3}[.] // 0;
+
+# "bump x from 1.2.3 to 2.0.0" → {package, from, to, semver}. Null for group
+# PRs, whose title carries no versions.
 def bump:
-  [.title | capture("from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)")] | first
-  | if . == null then null else
-      (.from | split(".")) as $f | (.to | split(".")) as $t
-      | . + {semver: (
-          if $f[0] != $t[0] then "major"
-          elif ($f[1] // "0") != ($t[1] // "0") then "minor"
-          else "patch" end)}
-    end;
+  [.title | capture("[Bb]ump (?<package>[^ ]+) from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)")] | first
+  | if . == null then null else . + {semver: semver_change(.from; .to)} end;
+
+# Dependabot lists every update of a group PR in its body, one per line:
+# "Updates `name` from 1.2.3 to 1.3.0". The body also quotes upstream release
+# notes, so a line from there can add an update but never hide one, and the PR
+# is rated by its riskiest update.
+def updates:
+  [(.body // "") | splits("\r?\n")
+    | capture("^Updates `(?<package>[^`]+)` from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)$")
+    | . + {semver: semver_change(.from; .to)}];
+
+# The npm scopes ("@opentelemetry") a PR takes to a new major.
+def major_scopes:
+  [(.bump // empty), .updates[] | select(.semver == "major") | .package
+    | select(startswith("@")) | split("/")[0]] | unique;
 
 # The merge gate. A PR is ready only when nothing below applies; the model may
-# hold a ready PR back, but never merges past a blocker.
+# hold a ready PR back, but never merges past a blocker. split_majors adds the
+# one blocker that needs the other PRs, and sets ready_to_merge.
 def dependabot_pr($required; $p):
   checks as $c
   | checks_state($c) as $state
   | (.createdAt | days_since) as $age
+  | bump as $bump
+  | updates as $updates
+  | ([($bump // empty), $updates[] | .semver] | max_by(semver_rank)) as $semver
   | {
       number, title, url,
+      # The commit the gate judged; a merge must land exactly this one.
+      head: .headRefOid,
       age_days: $age,
-      bump: bump,
+      bump: $bump,
+      updates: $updates,
+      semver: $semver,
       checks: $state,
       failing: failing($c),
       mergeable,
@@ -62,10 +92,24 @@ def dependabot_pr($required; $p):
         else empty end),
         (if .mergeable != "MERGEABLE" then "mergeable: \(.mergeable)" else empty end),
         (if .isDraft then "draft" else empty end),
-        (if $age < $p.cooldown_days then "younger than the \($p.cooldown_days)-day cooldown" else empty end)
+        (if $age < $p.cooldown_days then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
+        (if $semver == null then "no versions in the title or the body" else empty end)
       ]
-    }
-  | .ready_to_merge = (.blockers | length == 0);
+    };
+
+# Majors that one npm scope takes across several PRs (@opentelemetry/core in
+# one, its exporters in another) are one upgrade. Merged one at a time they
+# leave the scope on two majors, so none of the PRs is ready on its own.
+def split_majors:
+  (map({number, scopes: major_scopes})) as $s
+  | map(. as $pr
+      | ($s[] | select(.number == $pr.number) | .scopes) as $mine
+      | [$s[] | select(.number != $pr.number and any(.scopes[]; IN($mine[]))) | .number] as $with
+      | .belongs_with = $with
+      | if $with == [] then . else
+          .blockers += ["major split across PRs: take it together with \($with | map("#\(.)") | join(", "))"]
+        end
+      | .ready_to_merge = (.blockers | length == 0));
 
 def other_pr($p):
   checks as $c
@@ -128,7 +172,7 @@ def health($runs):
         name,
         url: .repo.html_url,
         default_branch: .repo.default_branch,
-        dependabot_prs: [.prs[] | select(.author.login == "app/dependabot") | dependabot_pr($required; $p)],
+        dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot") | dependabot_pr($required; $p)] | split_majors),
         other_prs: [.prs[] | select(.author.login != "app/dependabot") | other_pr($p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
           name, path,

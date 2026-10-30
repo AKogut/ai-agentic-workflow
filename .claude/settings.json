@@ -19,6 +19,7 @@
       "Bash(gh release list:*)"
     ],
     "ask": [
+      "Bash(./scripts/merge-dependabot.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(gh api:*)",
       "Bash(git push:*)",
@@ -28,7 +29,8 @@
       "Read(./.env)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo delete:*)",
-      "Bash(gh workflow disable:*)"
+      "Bash(gh workflow disable:*)",
+      "Bash(gh *pr merge*--admin*)"
     ]
   }
 }
