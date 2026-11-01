@@ -13,6 +13,19 @@ command -v gh >/dev/null || die "gh is not installed"
 command -v jq >/dev/null || die "jq is not installed"
 [ -f "$KOGUT_CONFIG" ] || die "missing $KOGUT_CONFIG"
 
+# `gh api` prints the error body on stdout even when it fails, so a plain
+# `|| echo fallback` would leave invalid JSON behind. Prints the response, or
+# $1 if the request failed.
+api_or() {
+  local fallback="$1" out
+  shift
+  if out="$(gh api "$@" 2>/dev/null)"; then
+    printf '%s\n' "$out"
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
 kogut_owner() { jq -r '.owner' "$KOGUT_CONFIG"; }
 
 kogut_policy() { jq -r --arg k "$1" '.policy[$k]' "$KOGUT_CONFIG"; }
