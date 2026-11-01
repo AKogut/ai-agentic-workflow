@@ -407,6 +407,25 @@ def health($runs):
       last_success_at: ($done | map(select(.conclusion == "success")) | first | .created_at?)
     };
 
+# What kogut may run on GitHub to settle a red workflow on the default branch.
+# Nothing while a run is going. A failed run on the current head may have its
+# failed jobs retried once, while the failures are few: one that keeps coming
+# back is not a flake. A run on an older commit says nothing about the current
+# one, and GitHub retries nothing older than 30 days, so then a workflow that
+# can be started by hand runs again at the head, once per head.
+def ci_action($w; $runs; $head_sha; $app):
+  $w.health as $h | $h.latest as $run
+  | [$runs[] | select(.head_sha == $head_sha and (.triggered_by // "" | is_app($app)))] as $mine
+  | if $head_sha == null or $run == null or any($runs[]; .status != "completed") then null
+    elif $run.head_sha == $head_sha and ($run.created_at | days_since) < 30 then
+      (if ($run.run_attempt // 1) < 2 and $h.streak < 3 then
+         {name: "rerun", reason: "failed on the current head and not retried yet"}
+       else null end)
+    elif $w.dispatchable and $mine == [] then
+      {name: "dispatch", reason: (if $run.head_sha == $head_sha then "the last run is too old for GitHub to retry"
+        else "the last run was on an older commit, so it says nothing about the current head" end)}
+    else null end;
+
 .policy as $p
 # kogut's GitHub App: its PRs are "app/<slug>", its commits "<slug>[bot]".
 | .owner as $owner
@@ -430,7 +449,8 @@ def health($runs):
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
-          name, path,
+          id, name, path,
+          action: ci_action(.; $r.runs[.id | tostring] // []; $r.repo.head_sha; $app),
           failing_streak: .health.streak,
           of_runs: .health.total,
           last_success_at: .health.last_success_at,
@@ -439,7 +459,11 @@ def health($runs):
         ci_flaky: [$active[] | select(.health.streak == 0 and .health.failures > 0) | {
           name, path, failures: .health.failures, of_runs: .health.total
         }],
-        workflows_disabled: [.workflows[] | select(.state != "active") | {name, path, state}],
+        # GitHub disables a scheduled workflow after 60 days without activity;
+        # one the owner disabled stays as it is.
+        workflows_disabled: [.workflows[] | select(.state != "active") | {id, name, path, state,
+          action: (if .state == "disabled_inactivity" then
+            {name: "enable", reason: "GitHub disabled it after 60 days without activity"} else null end)}],
         alerts: (.alerts.items | alert_summary),
         hygiene: {
           required_checks: $required,
