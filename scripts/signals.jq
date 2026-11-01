@@ -47,30 +47,104 @@ def bump:
   [.title | capture("[Bb]ump (?<package>[^ ]+) from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)")] | first
   | if . == null then null else . + {semver: semver_change(.from; .to)} end;
 
-# Dependabot lists every update of a group PR in its body, one per line:
-# "Updates `name` from 1.2.3 to 1.3.0". The body also quotes upstream release
-# notes, so a line from there can add an update but never hide one, and the PR
-# is rated by its riskiest update.
+# Dependabot names each update of a group PR in its body, in a table at the top
+# ("| [name](url) | `1.2.3` | `1.3.0` |") and in an "Updates `name` from 1.2.3
+# to 1.3.0" line. A long body is cut short, so some updates are only in the
+# table. One line yields at most one update.
+def body_updates:
+  splits("\r?\n")
+  | [capture("^Updates `(?<package>[^`]+)` from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)$"),
+     capture("^\\| \\[(?<package>[^\\]]+)\\]\\([^)]*\\) \\| `v?(?<from>[0-9][^`]*)` \\| `v?(?<to>[0-9][^`]*)` \\|$")]
+  | first // empty;
+
+def distinct: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
+
+# The body also quotes upstream release notes, so a line from there can add an
+# update but never hide one, and the PR is rated by its riskiest update.
 def updates:
-  [(.body // "") | splits("\r?\n")
-    | capture("^Updates `(?<package>[^`]+)` from v?(?<from>[0-9][^ ]*) to v?(?<to>[0-9][^ ]*)$")
-    | . + {semver: semver_change(.from; .to)}];
+  [.body // "" | body_updates] | distinct | map(. + {semver: semver_change(.from; .to)});
+
+# The part of a Dependabot body that Dependabot writes itself: everything before
+# the first <details>, where the quoted release notes, changelogs and commits
+# begin.
+def own_text: .body // "" | .[:(index("<details>") // length)];
+
+# The updates Dependabot itself names: the title, and in its own text the table
+# and the first "Updates" line. A fix is read only from these, since a quoted
+# line could otherwise claim one. Later "Updates" lines sit between quoted
+# blocks and are left out, which can miss a fix but never invent one.
+def own_updates: [(bump // empty | {package, from, to}), (own_text | body_updates)] | distinct;
 
 # The npm scopes ("@opentelemetry") a PR takes to a new major.
 def major_scopes:
   [(.bump // empty), .updates[] | select(.semver == "major") | .package
     | select(startswith("@")) | split("/")[0]] | unique;
 
+def severity_rank: {critical: 4, high: 3, medium: 2, low: 1}[. // ""] // 0;
+
+# A version as a key that sorts like the version, four-part Ruby versions
+# included. A pre-release sorts below its release.
+def version_key:
+  ltrimstr("v") | split("+")[0] | split("-") as $parts
+  | ($parts[0] | split(".") | map(tonumber? // 0)) as $n
+  | ($n + [0, 0, 0, 0, 0, 0])[:6] + [if ($parts | length) > 1 then 0 else 1 end];
+
+# GitHub writes an alert's vulnerable range as comparators joined by commas:
+# "< 1.1.16", ">= 2.0.0, < 2.1.5". A range that cannot be read contains
+# nothing, so an alert without one never counts as fixed.
+def in_range($range):
+  version_key as $v
+  | ($range // "" | split(",") | map(gsub("^\\s+|\\s+$"; "")
+      | [capture("^(?<op><=|>=|<|>|=)?\\s*v?(?<ver>[0-9][^ ]*)$")] | first)) as $cmp
+  | ($cmp | length) > 0 and all($cmp[];
+      . != null and ((.ver | version_key) as $b
+        | {"<": ($v < $b), "<=": ($v <= $b), ">": ($v > $b), ">=": ($v >= $b), "=": ($v == $b)}[.op // "="]));
+
+# The directory of an alert's manifest, as Dependabot names it: "/" for
+# package-lock.json, "/app" for app/Gemfile.lock.
+def manifest_dir: if . == null then null else "/" + (split("/")[:-1] | join("/")) end;
+
+# The directory a Dependabot PR updates. The title names any directory but the
+# root ("bump x from 1.0 to 1.1 in /app"), and a group's body names its one
+# directory. A group across several directories has none, so on its own it
+# fixes no alert.
+def pr_directory:
+  if .title | test("across [0-9]+ directories") then null
+  else ([.title | capture(" in (?<d>/[^ ]*)( |$)")] | first | .d)
+    // ([own_text | capture("updates? in the (?<d>/[^ ]*) directory")] | first | .d)
+    // "/"
+    | if . == "/" then . else rtrimstr("/") end
+  end;
+
+# The open alerts a PR fixes, per package: one of its updates takes the package
+# in the alert's directory from inside the vulnerable range to outside it.
+def fixed_alerts($dir; $updates; $alerts):
+  [$alerts[] | . as $a
+    | select($dir != null and ($a.manifest | manifest_dir) == $dir
+        and any($updates[]; .package == $a.package
+          and (.from | in_range($a.vulnerable)) and (.to | in_range($a.vulnerable) | not)))]
+  | group_by(.package)
+  | map({package: .[0].package, severity: (max_by(.severity | severity_rank) | .severity), count: length})
+  | sort_by(-(.severity | severity_rank), .package);
+
 # The merge gate. A PR is ready only when nothing below applies; the model may
 # hold a ready PR back, but never merges past a blocker. split_majors adds the
 # one blocker that needs the other PRs, and sets ready_to_merge.
-def dependabot_pr($required; $p):
+# The cooldown guards against a hostile release, which is usually caught and
+# pulled within days. A PR that fixes an alert at cooldown_skip_severity or
+# worse skips it: there the known vulnerability is the greater risk. Without
+# the setting, every PR waits.
+def dependabot_pr($required; $alerts; $p):
   checks as $c
   | checks_state($c) as $state
   | (.createdAt | days_since) as $age
   | bump as $bump
   | updates as $updates
   | ([($bump // empty), $updates[] | .semver] | max_by(semver_rank)) as $semver
+  | pr_directory as $dir
+  | fixed_alerts($dir; own_updates; $alerts) as $fixes
+  | ($p.cooldown_skip_severity | severity_rank) as $skip
+  | ($skip > 0 and any($fixes[]; (.severity | severity_rank) >= $skip)) as $urgent
   | {
       number, title, url,
       # The commit the gate judged; a merge must land exactly this one.
@@ -79,6 +153,8 @@ def dependabot_pr($required; $p):
       bump: $bump,
       updates: $updates,
       semver: $semver,
+      directory: $dir,
+      fixes: $fixes,
       checks: $state,
       failing: failing($c),
       mergeable,
@@ -97,7 +173,7 @@ def dependabot_pr($required; $p):
           "behind the default branch: the ruleset wants it up to date, and Dependabot rebases only on conflicts"
         else empty end),
         (if .isDraft then "draft" else empty end),
-        (if $age < $p.cooldown_days then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
+        (if $age < $p.cooldown_days and ($urgent | not) then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
         (if $semver == null then "no versions in the title or the body" else empty end)
       ]
     };
@@ -220,8 +296,6 @@ def other_pr($p):
 # Open Dependabot alerts, summed by severity and grouped per package, worst
 # first: one repository can carry a hundred alerts for a dozen packages. The
 # individual alerts stay in the snapshot.
-def severity_rank: {critical: 4, high: 3, medium: 2, low: 1}[.] // 0;
-
 def alert_summary:
   {
     total: length,
@@ -314,7 +388,8 @@ def health($runs):
         name,
         url: .repo.html_url,
         default_branch: .repo.default_branch,
-        dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot") | dependabot_pr($required; $p)] | split_majors),
+        dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot")
+          | dependabot_pr($required; $r.alerts.items // []; $p)] | split_majors),
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
