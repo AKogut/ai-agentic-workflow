@@ -57,7 +57,7 @@ flowchart LR
 ```
 
 1. **Collect.** [`collect.sh`](scripts/collect.sh) reads every watched repository with `gh` in about 25 seconds, without a model: open PRs and their checks, each workflow's run history on the default branch, required checks from branch protection and rulesets, Dependabot alerts and settings.
-2. **Apply the policy.** [`signals.jq`](scripts/signals.jq) reduces that state to signals, and the merge gate lives here. A Dependabot PR is ready only when every required check has passed, it is mergeable, it is not behind the default branch and it is at least three days old. A repository without required checks never has a ready PR, because "green" means nothing there. A group PR is rated by every update Dependabot lists in its body, a minor below 1.0 counts as a major, a PR whose versions cannot be read is never ready, and a major that one npm scope takes across several PRs blocks each of them.
+2. **Apply the policy.** [`signals.jq`](scripts/signals.jq) reduces that state to signals, and the merge gate lives here. A Dependabot PR is ready only when every required check has passed, it is mergeable, it is not behind the default branch and it is at least three days old. The cooldown is skipped for a PR that fixes a critical or high alert: one of its updates takes the package in the alert's directory out of the vulnerable range. A repository without required checks never has a ready PR, because "green" means nothing there. A group PR is rated by every update Dependabot lists in its body, a minor below 1.0 counts as a major, a PR whose versions cannot be read is never ready, and a major that one npm scope takes across several PRs blocks each of them.
 3. **Judge.** The model works only where judgement is needed:
    - For a major bump, it reads the release notes and searches the code for what changed.
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
@@ -166,7 +166,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 
 - [x] **Analysis:** `/kogut analyze`, a read-only report
 - [x] **Discord:** a channel per repository
-- [ ] **Hygiene baseline:** required checks, auto-merge, Dependabot config and alerts in every watched repository
+- [x] **Hygiene baseline:** required checks, auto-merge, Dependabot config and alerts in every watched repository
 - [x] **Merging:** Dependabot PRs merged through a script that re-checks the policy itself
 - [x] **Fixes:** prepared in a worktree and opened as a PR by `kogut-agent[bot]` after the owner approves
 - [x] **Identity:** a GitHub App, so the agent's work and mine stay apart in the history
@@ -174,6 +174,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Follow-up:** kogut takes its own PRs to green and answers review comments
 - [x] **Tasks:** issues the owner labels `kogut-task` become PRs, within maintenance and migrations
 - [x] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix, with the lockfile regenerated in lockfile-only mode
+- [x] **Security fixes first:** a Dependabot PR that fixes a critical or high alert skips the cooldown
 
 ## License
 

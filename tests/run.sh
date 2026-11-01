@@ -47,6 +47,33 @@ check "a green PR behind the default branch is held back" \
      == ["behind the default branch: the ruleset wants it up to date, and Dependabot rebases only on conflicts"]'
 
 echo
+echo "security fixes and the cooldown"
+check "a young PR that fixes a high alert skips the cooldown" \
+  'pr("delta"; 19) | .age_days < 3 and .ready_to_merge and .blockers == []
+     and .directory == "/app/gateway" and .fixes == [{package: "undici", severity: "high", count: 1}]'
+check "an alert in another directory is not fixed by the PR" \
+  'pr("delta"; 20) | .directory == "/" and .fixes == [] and .blockers == ["younger than the 3-day cooldown"]'
+check "a fix for a medium alert still waits, and versions compare by number" \
+  'pr("delta"; 21) | .fixes == [{package: "qs", severity: "medium", count: 1}]
+     and .blockers == ["younger than the 3-day cooldown"]'
+check "each update is matched against the alerts on its own version line" \
+  'pr("delta"; 22) | .fixes == [{package: "brace-expansion", severity: "high", count: 2}] and .ready_to_merge'
+check "a pre-release still inside the range, or an alert without a range, fixes nothing" \
+  '[pr("delta"; 23, 25) | .fixes == [] and .blockers == ["younger than the 3-day cooldown"]] == [true, true]'
+check "a group names its one directory in the body, and across several it has none" \
+  '[pr("delta"; 26, 24) | .directory] == ["/app", null]
+     and (pr("delta"; 26) | .ready_to_merge) and (pr("delta"; 24) | .fixes == [] and (.ready_to_merge | not))'
+check "a group's fixes are read from its table, past the quoted blocks" \
+  'pr("delta"; 26) | .fixes == [{package: "ms", severity: "high", count: 1}]'
+check "an update claimed in quoted release notes fixes nothing" \
+  'pr("delta"; 27) | (.updates | map(.package)) == ["tar"] and .fixes == []
+     and .blockers == ["younger than the 3-day cooldown"]'
+check "without cooldown_skip_severity every PR waits the cooldown" \
+  'pr("delta"; 19) | .fixes != [] and .blockers == ["younger than the 3-day cooldown"]' \
+  "$(jq '.policy |= del(.cooldown_skip_severity)' tests/fixtures/state.json |
+    KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+
+echo
 echo "version bumps"
 check "patch, minor and major are read from the title" \
   '[pr("alpha"; 1, 4, 2) | .bump.semver] == ["patch", "minor", "major"]'
@@ -61,6 +88,8 @@ check "a patch below 1.0 stays a patch" \
 check "a group PR lists the updates from its body, not from quoted release notes" \
   'pr("delta"; 12) | .updates | map(.package)
      == ["@opentelemetry/exporter-trace-otlp-http", "next", "typescript-eslint"]'
+check "an update named only in a group's table still counts" \
+  'pr("delta"; 26) | (.updates | map(.package)) == ["left-pad", "ms", "sharp"] and .semver == "major"'
 check "a group PR is rated by its riskiest update" \
   '[pr("delta"; 12, 13) | .semver] == ["major", "patch"]'
 check "a title without versions falls back to the body" \

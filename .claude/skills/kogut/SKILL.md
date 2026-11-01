@@ -34,7 +34,7 @@ This is the sweep, for `/kogut` and `/kogut analyze`. `/kogut fix` follows "Fixe
 
 Run `./scripts/collect.sh` followed by the repository names, if any. It prints the signals digest and saves the raw snapshot to `.kogut/state.json` (query it with `jq` when you need a field the digest leaves out). Per repository:
 
-- `dependabot_prs[]`: `semver` (`major`, `minor` or `patch`) is the riskiest change in the PR. Below 1.0 a minor counts as `major`. `bump` is the update named in the title, null for group PRs. `updates[]` lists the updates Dependabot names in the body. `belongs_with` lists the other PRs that take the same npm scope to a new major. Also `checks`, `blockers` and `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
+- `dependabot_prs[]`: `semver` (`major`, `minor` or `patch`) is the riskiest change in the PR. Below 1.0 a minor counts as `major`. `bump` is the update named in the title, null for group PRs. `updates[]` lists the updates Dependabot names in the body. `belongs_with` lists the other PRs that take the same npm scope to a new major. `directory` is the one the PR updates, and `fixes[]` the open alerts it fixes, per package and worst first: one of its updates moves the package in the alert's directory out of the vulnerable range. A PR that fixes an alert at `policy.cooldown_skip_severity` (high) or worse skips the cooldown. Also `checks`, `blockers` and `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
 - `other_prs[]`: the owner's own PRs.
 - `tasks[]`: issues the owner labelled `kogut-task`, and kogut's own issues it takes on unasked (`auto`), each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
 - `kogut_prs[]`: the PRs kogut opened, each with `checks`, `failing`, `attempts` (follow-up commits so far), the owner's unanswered `feedback[]` and what it `needs` (step 4).
@@ -66,7 +66,7 @@ Spend effort where judgement is needed and stay brief elsewhere.
 - **Flaky.** Give the counts. Investigate only when a workflow failed 3 or more times in the window.
 - **Disabled workflows.** Give the reason: `disabled_inactivity` means 60 days without activity in the repository. Re-enabling it is the fix.
 - **The owner's PRs.** Do not review them. Mention a PR if it is red (which check, plus one line on why if the log makes it obvious) or stale.
-- **Alerts.** Give the counts by severity. Name the critical and high packages, each with the Dependabot PR that fixes it, if there is one.
+- **Alerts.** Give the counts by severity. Name the critical and high packages, each with the Dependabot PR whose `fixes[]` names it, if there is one.
 - **Hygiene.** List `hygiene_issues` as they are.
 
 ### 3. Merge (not with `analyze`)
@@ -104,7 +104,7 @@ The report is your whole final message, with nothing before it. Write it in Engl
 
 ```
 🔴 <repo>
-kogut merged: #390 (…), #391 (…)
+kogut merged: #390 (…), #391 (…, fixes a high alert in …)
 kogut PRs: #12 fixed after review, #14 waiting for you
 Tasks: #20 waiting for kogut, #21 waiting for you
 Needs you: …
