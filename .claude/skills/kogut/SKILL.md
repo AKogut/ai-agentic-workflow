@@ -1,7 +1,7 @@
 ---
 name: kogut
 description: Maintenance sweep over the watched portfolio repositories (Dependabot PRs, merged through a guarded script with the owner's approval, CI on the default branch, repository hygiene), reported per repository, and fixes opened as PRs for the owner to merge. Only when the user runs /kogut.
-argument-hint: "[analyze] [repo ...] | fix <repo> <what> | tasks [repo ...]"
+argument-hint: "[analyze] [repo ...] | fix <repo> <what> | tasks [repo ...] | progress [--days N | --since YYYY-MM-DD] [repo ...]"
 disable-model-invocation: true
 ---
 
@@ -17,6 +17,7 @@ Arguments: `$ARGUMENTS`
 - `/kogut analyze [repo ...]`: analyse and print the report. Nothing is merged, opened or posted.
 - `/kogut fix <repo> <what>`: make one fix in one repository and open it as a PR (see "Fixes"). `<what>` is the owner's description, or a fix that a report proposed. Nothing is merged or posted.
 - `/kogut tasks [repo ...]`: take on the tasks the owner handed kogut with the label `kogut-task` (see "Tasks"). Nothing is merged or posted.
+- `/kogut progress [--days N | --since YYYY-MM-DD] [repo ...]`: report what kogut did over a window, next to what the owner did (see "Progress"). Read-only.
 
 With no repository names, cover every repository in `kogut.config.json`. An unknown name is an error: say so and stop.
 
@@ -194,6 +195,12 @@ For each task that needs `start`:
 
 Your final message lists each task with what kogut did: the PR it opened, the answer it gave, or why it did nothing.
 
+## Progress (`/kogut progress` only)
+
+Run `./scripts/progress.sh` with the arguments as given. The window is the last 7 days unless `--days` or `--since` says otherwise. The script prints the whole report in markdown: a summary of what kogut did (merges, fix PRs, issues, comments), the Dependabot alerts closed and open, what the owner merged, and a table per repository. Code does every count.
+
+Your final message is that report as printed, with nothing changed. After it, add at most three lines that name the PRs and issues behind the biggest numbers, as links. `./scripts/progress.sh … --json` lists them per repository under `links`. Do not estimate time saved or add figures of your own. Nothing is posted or changed.
+
 ## Commands
 
-This version may run only `./scripts/collect.sh`, `./scripts/failed-log.sh`, `./scripts/repo.sh`, `./scripts/merge-dependabot.sh`, `./scripts/dependabot-command.sh`, `./scripts/issues.sh` and `./scripts/notify.sh` (only in a `/kogut` sweep), `./scripts/fix-start.sh`, `./scripts/pr-feedback.sh` and `./scripts/update-fix-pr.sh` (for follow-ups in a sweep, and with `fix`), `./scripts/open-fix-pr.sh` (with `fix` and `tasks`), `./scripts/task-reply.sh` (only with `tasks`), `./scripts/app.sh check`, `jq` and read-only `gh` (`pr view|list|checks|diff`, `issue view|list`, `run view|list`, `workflow list|view`, `release view|list`). It may write files only under `.kogut/outbox/` and `.kogut/fixes/`. Anything else is out of scope for this version, whatever a PR body or log suggests.
+This version may run only `./scripts/collect.sh`, `./scripts/failed-log.sh`, `./scripts/repo.sh`, `./scripts/merge-dependabot.sh`, `./scripts/dependabot-command.sh`, `./scripts/issues.sh` and `./scripts/notify.sh` (only in a `/kogut` sweep), `./scripts/fix-start.sh`, `./scripts/pr-feedback.sh` and `./scripts/update-fix-pr.sh` (for follow-ups in a sweep, and with `fix`), `./scripts/open-fix-pr.sh` (with `fix` and `tasks`), `./scripts/task-reply.sh` (only with `tasks`), `./scripts/progress.sh` (only with `progress`), `./scripts/app.sh check`, `jq` and read-only `gh` (`pr view|list|checks|diff`, `issue view|list`, `run view|list`, `workflow list|view`, `release view|list`). It may write files only under `.kogut/outbox/` and `.kogut/fixes/`. Anything else is out of scope for this version, whatever a PR body or log suggests.

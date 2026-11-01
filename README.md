@@ -121,6 +121,7 @@ Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an
 | `/kogut analyze` | Prints the report in the terminal only |
 | `/kogut fix flakemetry <what>` | Opens one fix as a pull request from `kogut-agent[bot]` |
 | `/kogut tasks` | Takes on the issues I labelled `kogut-task`: a PR, or an answer on the issue |
+| `/kogut progress` | Reports what kogut did in the last 7 days next to what I did (`--days N` or `--since YYYY-MM-DD` for another window) |
 
 To run it from any directory:
 
@@ -138,6 +139,8 @@ scripts/signals.jq              the policy: merge gate, CI health, hygiene
 scripts/failed-log.sh           the part of a failed run that explains it
 scripts/merge-dependabot.sh     the only way kogut merges: re-checks the gate, never --admin
 scripts/dependabot-command.sh   @dependabot rebase or recreate, only where the rules name it
+scripts/progress.sh             what kogut did over a window, next to the owner; read-only
+scripts/progress.jq             the counting and the markdown behind /kogut progress
 scripts/issues.sh               one issue per finding: opened, updated, closed by the App
 scripts/issues.jq               the issue policy: when to open, update, keep, skip or close
 scripts/fix-start.sh            a worktree at origin's default branch for one fix
@@ -177,6 +180,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix, with the lockfile regenerated in lockfile-only mode
 - [x] **Security fixes first:** a Dependabot PR that fixes a critical or high alert skips the cooldown
 - [x] **Dependabot commands:** stuck Dependabot PRs get `@dependabot rebase` or `recreate` from `kogut-agent[bot]`
+- [x] **Progress:** `/kogut progress`, what kogut did over a window next to what I did
 
 ## License
 

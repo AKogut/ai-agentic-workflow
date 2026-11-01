@@ -28,19 +28,6 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# `gh api` prints the error body on stdout even when it fails, so a plain
-# `|| echo fallback` would leave invalid JSON behind. Prints the response, or
-# $1 if the request failed.
-api_or() {
-  local fallback="$1" out
-  shift
-  if out="$(gh api "$@" 2>/dev/null)"; then
-    printf '%s\n' "$out"
-  else
-    printf '%s\n' "$fallback"
-  fi
-}
-
 # Raw state of one repository, as JSON on stdout.
 collect_repo() {
   local repo="$1" full="$owner/$1" dir="$tmp/$1" branch id

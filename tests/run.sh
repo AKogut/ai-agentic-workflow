@@ -281,6 +281,36 @@ check "an issue whose finding is gone is closed, saying why" \
 check "an issue without a kogut key is never touched" \
   'all(.[]; .number != 10)' "$kept"
 
+# The progress report in scripts/progress.jq, on a fixed set of search results.
+progress="$(jq -c --arg format json -f scripts/progress.jq tests/fixtures/progress.json)"
+report="$(jq -r --arg format markdown -f scripts/progress.jq tests/fixtures/progress.json)"
+p_repo='def p($n): .repos[] | select(.name == $n);'
+
+echo
+echo "progress report"
+check "kogut's merges are the PRs the App merged" \
+  "$p_repo"' p("alpha") | .kogut.merged == 1' "$progress"
+check "kogut's PRs count what happened in the window" \
+  "$p_repo"' p("alpha") | .kogut.prs == {opened: 3, merged: 1, closed: 1, open: 1}' "$progress"
+check "issues kogut closed are kept apart from the owner's" \
+  "$p_repo"' p("alpha") | .kogut.issues == {opened: 2, closed: 1, closed_by_owner: 1, open: 1}' "$progress"
+check "comments count from when they were written, commands among them" \
+  "$p_repo"' p("alpha") | .kogut.comments == 2 and .kogut.commands == 1' "$progress"
+check "the owner's merges split into kogut's fixes, Dependabot's and their own" \
+  "$p_repo"' p("alpha") | .owner == {merged: 3, kogut_fixes: 1, dependabot: 1, own: 1}' "$progress"
+check "alerts closed in the window and open now are counted by severity" \
+  "$p_repo"' p("alpha") | .alerts.fixed == {high: 1, critical: 1} and .alerts.open == {critical: 1, high: 2}' "$progress"
+check "the PRs and issues behind the numbers come with their links" \
+  "$p_repo"' p("alpha") | .links == {kogut_merged: ["https://github.com/example/alpha/pull/20"],
+     fix_prs: ["https://github.com/example/alpha/pull/1", "https://github.com/example/alpha/pull/2", "https://github.com/example/alpha/pull/3"],
+     issues: ["https://github.com/example/alpha/issues/10", "https://github.com/example/alpha/issues/11"]}' "$progress"
+check "repositories kogut does not watch stay out, totals included" \
+  '[.repos[].name] == ["alpha", "beta"] and .totals.owner.merged == 3 and .totals.kogut.prs.opened == 4' "$progress"
+check "the report sums up the window and marks alerts it could not read" \
+  'split("\n") | (.[0] == "## kogut progress, 25 Oct 2026 to 1 Nov 2026")
+     and any(.[]; startswith("kogut merged 1 Dependabot PR, opened 4 fix PRs (1 merged by the owner, 1 closed unmerged, 2 open now)"))
+     and any(.[]; . == "| beta | 0 | 1 (0) | 0 / 0 | 0 | n/a | n/a | 0 (0) |")' "$(jq -Rs . <<<"$report")"
+
 echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
