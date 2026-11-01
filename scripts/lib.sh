@@ -209,15 +209,18 @@ kogut_app_jwt() {
 # cannot bypass a ruleset the way the owner's token can. Assign it to a variable
 # and check it before use: in `GH_TOKEN="$(kogut_app_token r)" gh …` a failure
 # would leave GH_TOKEN empty, and gh would quietly fall back to the owner.
+# An optional second argument narrows the token to some permissions, such as
+# '{"actions":"write"}'; GitHub refuses one the installation was not granted.
 kogut_app_token() {
-  local repo="$1" jwt installation
+  local repo="$1" permissions="${2:-}" jwt installation
   command -v curl >/dev/null || die "curl is not installed"
   jwt="$(kogut_app_jwt)" || exit 1
   installation="$(curl -fsS -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/$(kogut_owner)/$repo/installation" | jq -er '.id')" ||
     die "the kogut App is not installed on $repo"
   curl -fsS -X POST -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
-    --data "$(jq -cn --arg r "$repo" '{repositories: [$r]}')" \
+    --data "$(jq -cn --arg r "$repo" --arg p "$permissions" \
+      '{repositories: [$r]} + (if $p == "" then {} else {permissions: ($p | fromjson)} end)')" \
     "https://api.github.com/app/installations/$installation/access_tokens" | jq -er '.token' ||
-    die "GitHub refused an installation token for $repo"
+    die "GitHub refused an installation token for $repo${permissions:+ with $permissions: has the owner granted it to the App?}"
 }

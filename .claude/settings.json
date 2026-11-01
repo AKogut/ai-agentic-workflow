@@ -27,6 +27,7 @@
     "ask": [
       "Bash(./scripts/merge-dependabot.sh:*)",
       "Bash(./scripts/dependabot-command.sh:*)",
+      "Bash(./scripts/run-workflow.sh:*)",
       "Bash(./scripts/open-fix-pr.sh:*)",
       "Bash(./scripts/update-fix-pr.sh:*)",
       "Bash(./scripts/issues.sh:*)",
@@ -38,6 +39,10 @@
       "Bash(gh pr edit:*)",
       "Bash(gh pr review:*)",
       "Bash(gh api:*)",
+      "Bash(gh run rerun:*)",
+      "Bash(gh run cancel:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh workflow enable:*)",
       "Bash(git push:*)",
       "Bash(curl:*)"
     ],

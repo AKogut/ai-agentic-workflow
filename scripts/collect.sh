@@ -40,7 +40,7 @@ collect_repo() {
   # after 60 days without commits on the default branch, so idleness is
   # measured from its head.
   local last_commit
-  last_commit="$(api_or null "repos/$full/commits/$branch" --jq '.commit.committer.date | tojson')"
+  last_commit="$(api_or '{}' "repos/$full/commits/$branch" --jq '{sha, date: .commit.committer.date}')"
 
   gh pr list -R "$full" --state open --limit 100 \
     --json number,title,body,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,url \
@@ -80,13 +80,26 @@ collect_repo() {
     --jq '[.workflows[] | {id, name, path, state}]' >"$dir/workflows.json"
 
   # Runs on the default branch only: a red PR is the PR's business, a red main
-  # is the repository's.
-  for id in $(jq -r '.[] | select(.state == "active") | .id' "$dir/workflows.json"); do
+  # is the repository's. Each workflow also records whether it can be started
+  # by hand, read from its file on the default branch.
+  mkdir -p "$dir/dispatch"
+  local path
+  while read -r id path; do
     gh api "repos/$full/actions/workflows/$id/runs?branch=$branch&per_page=$window&exclude_pull_requests=true" \
-      --jq "{\"$id\": [.workflow_runs[] | {id, event, status, conclusion, created_at, url: .html_url}]}" \
-      >"$dir/runs/$id.json"
-  done
+      --jq "{\"$id\": [.workflow_runs[] | {id, event, status, conclusion, created_at, run_attempt, head_sha,
+              triggered_by: .triggering_actor.login, url: .html_url}]}" \
+      </dev/null >"$dir/runs/$id.json"
+    if gh api -H 'Accept: application/vnd.github.raw' "repos/$full/contents/$path?ref=$branch" </dev/null 2>/dev/null |
+      grep -Eq '^[^#]*workflow_dispatch'; then
+      echo "{\"$id\": true}" >"$dir/dispatch/$id.json"
+    else
+      echo "{\"$id\": false}" >"$dir/dispatch/$id.json"
+    fi
+  done < <(jq -r '.[] | select(.state == "active") | "\(.id) \(.path)"' "$dir/workflows.json")
   find "$dir/runs" -name '*.json' -exec cat {} + | jq -s 'add // {}' >"$dir/runs.json"
+  find "$dir/dispatch" -name '*.json' -exec cat {} + | jq -s 'add // {}' >"$dir/dispatch.json"
+  jq --slurpfile d "$dir/dispatch.json" 'map(. + {dispatchable: ($d[0][.id | tostring] // false)})' \
+    "$dir/workflows.json" >"$dir/workflows.tmp" && mv "$dir/workflows.tmp" "$dir/workflows.json"
 
   # Required checks come from classic branch protection and from rulesets; the
   # rules endpoint returns only the rulesets that actually apply to the branch.
@@ -159,7 +172,7 @@ collect_repo() {
     '{
       name: $name,
       repo: ($repo[0] | {default_branch, pushed_at, html_url, allow_auto_merge, delete_branch_on_merge}
-        + {last_commit_at: $last_commit}),
+        + {last_commit_at: $last_commit.date, head_sha: $last_commit.sha}),
       prs: $prs[0],
       workflows: $workflows[0],
       runs: $runs[0],

@@ -33,8 +33,9 @@ homepage="$(jq -r '.app.homepage' "$KOGUT_CONFIG")"
 case "${1:-}" in
   manifest)
     [ -z "$(kogut_app_id)" ] || die "$slug is already registered (id $(kogut_app_id))"
-    # The App can write code, PRs, issues and workflow files, and nothing else. It has
-    # no webhook, because kogut runs on demand and never listens.
+    # The App can write code, PRs, issues and workflow files, and run workflows
+    # (actions), and nothing else. It has no webhook, because kogut runs on
+    # demand and never listens.
     manifest="$(jq -cn --arg name "$slug" --arg url "$homepage" --arg owner "$(kogut_owner)" '{
       name: $name,
       url: $url,
@@ -44,7 +45,7 @@ case "${1:-}" in
       hook_attributes: {url: $url, active: false},
       request_oauth_on_install: false,
       setup_on_update: false,
-      default_permissions: {metadata: "read", contents: "write", pull_requests: "write", issues: "write", workflows: "write"},
+      default_permissions: {metadata: "read", contents: "write", pull_requests: "write", issues: "write", workflows: "write", actions: "write"},
       default_events: []
     }')"
     page="$KOGUT_ROOT/.kogut/app-manifest.html"
@@ -140,6 +141,13 @@ EOF
     done < <(kogut_repos)
     bot="$(kogut_app_bot)"
     echo "acts as $bot (user id $(gh api "users/$bot" --jq .id 2>/dev/null || echo unknown))"
+    # What the owner has granted the installation. A permission added in the
+    # App's settings counts only once the owner accepts it on the installation.
+    first="$(kogut_repos | head -n 1)"
+    granted="$(curl -fsS -H "Authorization: Bearer $(kogut_app_jwt)" -H 'Accept: application/vnd.github+json' \
+      "https://api.github.com/repos/$(kogut_owner)/$first/installation" |
+      jq -r '.permissions | to_entries | map("\(.key): \(.value)") | join(", ")')" || granted=unknown
+    echo "granted: $granted"
     exit "$failed"
     ;;
 

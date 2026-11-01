@@ -177,7 +177,7 @@ check "a marker copied into an issue by someone else makes no task" \
 echo
 echo "workflows on the default branch"
 check "consecutive failures form a streak, with the last success" \
-  'repo("alpha") | .ci_failing == [{name: "CI", path: ".github/workflows/ci.yml", failing_streak: 2, of_runs: 4,
+  'repo("alpha") | .ci_failing == [{id: 1, name: "CI", path: ".github/workflows/ci.yml", action: null, failing_streak: 2, of_runs: 4,
      last_success_at: "2026-10-27T09:00:00Z",
      latest_run: {id: 11, event: "push", conclusion: "failure", created_at: "2026-10-29T09:00:00Z",
                   url: "https://github.com/example/alpha/actions/runs/11"}}]'
@@ -186,7 +186,26 @@ check "a failure followed by a pass is flaky, not failing" \
 check "cancelled runs say nothing about health" \
   'repo("alpha") | [.ci_failing[], .ci_flaky[]] | map(.name) | index("Report") == null'
 check "disabled workflows are listed with the reason" \
-  'repo("alpha") | .workflows_disabled == [{name: "Old nightly", path: ".github/workflows/old-nightly.yml", state: "disabled_inactivity"}]'
+  'repo("alpha") | .workflows_disabled == [{id: 4, name: "Old nightly", path: ".github/workflows/old-nightly.yml",
+     state: "disabled_inactivity", action: {name: "enable", reason: "GitHub disabled it after 60 days without activity"}}]'
+
+# A red or disabled workflow in a fixture repository, by file name.
+wf() { echo "(repo(\"$1\") | (.ci_failing + .workflows_disabled)[] | select(.path == \".github/workflows/$2.yml\"))"; }
+
+echo
+echo "what kogut may run"
+check "a failed run on the current head is retried once" \
+  "[$(wf epsilon flaky), $(wf epsilon retried) | .action.name] == [\"rerun\", null]"
+check "a failure that keeps coming back is not retried" \
+  "$(wf epsilon persistent) | .failing_streak == 3 and .action == null"
+check "a red run on an older commit runs again at the head, if the workflow can be started by hand" \
+  "[$(wf epsilon stale), $(wf epsilon stale-schedule) | .action.name] == [\"dispatch\", null]"
+check "a run too old for GitHub to retry runs again at the head instead" \
+  "$(wf epsilon old-head) | .action == {name: \"dispatch\", reason: \"the last run is too old for GitHub to retry\"}"
+check "kogut starts a workflow once per head, and nothing while a run is going" \
+  "[$(wf epsilon dispatched), $(wf epsilon running) | .action] == [null, null]"
+check "a workflow the owner disabled stays disabled" \
+  "$(wf epsilon manual-off) | .state == \"disabled_manually\" and .action == null"
 
 echo
 echo "hygiene"

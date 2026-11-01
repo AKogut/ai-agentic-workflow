@@ -413,7 +413,8 @@
         "html_url": "https://github.com/example/epsilon",
         "allow_auto_merge": true,
         "delete_branch_on_merge": true,
-        "last_commit_at": "2026-10-29T12:00:00Z"
+        "last_commit_at": "2026-10-29T12:00:00Z",
+        "head_sha": "head000"
       },
       "prs": [
         {
@@ -721,8 +722,243 @@
           ]
         }
       ],
-      "workflows": [],
-      "runs": {},
+      "workflows": [
+        {
+          "id": 71,
+          "name": "Flaky",
+          "path": ".github/workflows/flaky.yml",
+          "state": "active",
+          "dispatchable": false
+        },
+        {
+          "id": 72,
+          "name": "Retried",
+          "path": ".github/workflows/retried.yml",
+          "state": "active",
+          "dispatchable": false
+        },
+        {
+          "id": 73,
+          "name": "Stale",
+          "path": ".github/workflows/stale.yml",
+          "state": "active",
+          "dispatchable": true
+        },
+        {
+          "id": 74,
+          "name": "Stale, schedule only",
+          "path": ".github/workflows/stale-schedule.yml",
+          "state": "active",
+          "dispatchable": false
+        },
+        {
+          "id": 75,
+          "name": "Dispatched",
+          "path": ".github/workflows/dispatched.yml",
+          "state": "active",
+          "dispatchable": true
+        },
+        {
+          "id": 76,
+          "name": "Persistent",
+          "path": ".github/workflows/persistent.yml",
+          "state": "active",
+          "dispatchable": false
+        },
+        {
+          "id": 77,
+          "name": "Running",
+          "path": ".github/workflows/running.yml",
+          "state": "active",
+          "dispatchable": true
+        },
+        {
+          "id": 78,
+          "name": "Old head",
+          "path": ".github/workflows/old-head.yml",
+          "state": "active",
+          "dispatchable": true
+        },
+        {
+          "id": 79,
+          "name": "Manual off",
+          "path": ".github/workflows/manual-off.yml",
+          "state": "disabled_manually",
+          "dispatchable": true
+        }
+      ],
+      "runs": {
+        "71": [
+          {
+            "id": 711,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-29T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/711"
+          },
+          {
+            "id": 712,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-28T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/712"
+          }
+        ],
+        "72": [
+          {
+            "id": 721,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-29T12:00:00Z",
+            "run_attempt": 2,
+            "head_sha": "head000",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/721"
+          },
+          {
+            "id": 722,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-28T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/722"
+          }
+        ],
+        "73": [
+          {
+            "id": 731,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-07-03T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/731"
+          }
+        ],
+        "74": [
+          {
+            "id": 741,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-07-03T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/741"
+          }
+        ],
+        "75": [
+          {
+            "id": 751,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "cancelled",
+            "created_at": "2026-10-29T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "kogut-agent[bot]",
+            "url": "https://github.com/example/epsilon/actions/runs/751"
+          },
+          {
+            "id": 752,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-01T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/752"
+          }
+        ],
+        "76": [
+          {
+            "id": 761,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-29T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/761"
+          },
+          {
+            "id": 762,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-28T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/762"
+          },
+          {
+            "id": 763,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-27T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/763"
+          }
+        ],
+        "77": [
+          {
+            "id": 771,
+            "event": "schedule",
+            "status": "in_progress",
+            "conclusion": null,
+            "created_at": "2026-10-30T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/771"
+          },
+          {
+            "id": 772,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-01T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "old111",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/772"
+          }
+        ],
+        "78": [
+          {
+            "id": 781,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-09-01T12:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "AKogut",
+            "url": "https://github.com/example/epsilon/actions/runs/781"
+          }
+        ]
+      },
       "required_checks": [
         "ci"
       ],
