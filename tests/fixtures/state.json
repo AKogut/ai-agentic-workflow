@@ -406,6 +406,339 @@
       "local_clone": { "path": "/tmp/delta", "present": true }
     },
     {
+      "name": "epsilon",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-10-29T12:00:00Z",
+        "html_url": "https://github.com/example/epsilon",
+        "allow_auto_merge": true,
+        "delete_branch_on_merge": true,
+        "last_commit_at": "2026-10-29T12:00:00Z"
+      },
+      "prs": [
+        {
+          "number": 60,
+          "title": "chore(deps): bump a-behind from 1.0.0 to 1.0.1",
+          "body": "Bumps a-behind from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BEHIND",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/a-behind-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/60",
+          "head_committed_at": "2026-10-25T12:00:00Z",
+          "comments": []
+        },
+        {
+          "number": 61,
+          "title": "chore(deps): bump b-conflict from 1.0.0 to 1.0.1",
+          "body": "Bumps b-conflict from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/b-conflict-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/61",
+          "head_committed_at": "2026-10-27T12:00:00Z",
+          "comments": []
+        },
+        {
+          "number": 62,
+          "title": "chore(deps): bump c-conflict-fresh from 1.0.0 to 1.0.1",
+          "body": "Bumps c-conflict-fresh from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/c-conflict-fresh-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/62",
+          "head_committed_at": "2026-10-30T09:00:00Z",
+          "comments": []
+        },
+        {
+          "number": 63,
+          "title": "chore(deps): bump d-edited from 1.0.0 to 1.0.1",
+          "body": "Bumps d-edited from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/d-edited-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/63",
+          "head_committed_at": "2026-10-26T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "dependabot"
+              },
+              "createdAt": "2026-10-28T12:00:00Z",
+              "body": "Looks like this PR has been edited by someone other than Dependabot. That means Dependabot can't rebase it - sorry!\n\nIf you're happy for Dependabot to recreate it from scratch, overwriting any edits, you can request `@dependabot recreate`."
+            }
+          ]
+        },
+        {
+          "number": 64,
+          "title": "chore(deps): bump e-cannot from 1.0.0 to 1.0.1",
+          "body": "Bumps e-cannot from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/e-cannot-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/64",
+          "head_committed_at": "2026-10-26T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "dependabot"
+              },
+              "createdAt": "2026-10-28T12:00:00Z",
+              "body": "Dependabot cannot update to the required version. Because of this, Dependabot cannot update this pull request."
+            }
+          ]
+        },
+        {
+          "number": 65,
+          "title": "chore(deps): bump f-asked from 1.0.0 to 1.0.1",
+          "body": "Bumps f-asked from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BEHIND",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/f-asked-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/65",
+          "head_committed_at": "2026-10-25T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "kogut-agent"
+              },
+              "createdAt": "2026-10-28T12:00:00Z",
+              "body": "@dependabot rebase"
+            }
+          ]
+        },
+        {
+          "number": 66,
+          "title": "chore(deps): bump g-asked-before from 1.0.0 to 1.0.1",
+          "body": "Bumps g-asked-before from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BEHIND",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/g-asked-before-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/66",
+          "head_committed_at": "2026-10-28T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "kogut-agent"
+              },
+              "createdAt": "2026-10-27T10:00:00Z",
+              "body": "@dependabot rebase"
+            },
+            {
+              "author": {
+                "login": "dependabot"
+              },
+              "createdAt": "2026-10-27T11:00:00Z",
+              "body": "Dependabot cannot update to the required version. Because of this, Dependabot cannot update this pull request."
+            }
+          ]
+        },
+        {
+          "number": 67,
+          "title": "chore(deps): bump h-red-old-base from 1.0.0 to 1.0.1",
+          "body": "Bumps h-red-old-base from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/h-red-old-base-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/67",
+          "head_committed_at": "2026-10-28T11:00:00Z",
+          "comments": []
+        },
+        {
+          "number": 68,
+          "title": "chore(deps): bump i-red-new-base from 1.0.0 to 1.0.1",
+          "body": "Bumps i-red-new-base from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "completedAt": "2026-10-29T18:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/i-red-new-base-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/68",
+          "head_committed_at": "2026-10-29T17:00:00Z",
+          "comments": []
+        },
+        {
+          "number": 69,
+          "title": "chore(deps): bump j-stranger from 1.0.0 to 1.0.1",
+          "body": "Bumps j-stranger from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/j-stranger-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/69",
+          "head_committed_at": "2026-10-27T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "mallory"
+              },
+              "createdAt": "2026-10-28T12:00:00Z",
+              "body": "Looks like this PR has been edited by someone other than Dependabot. That means Dependabot can't rebase it - sorry!\n\nIf you're happy for Dependabot to recreate it from scratch, overwriting any edits, you can request `@dependabot recreate`."
+            },
+            {
+              "author": {
+                "login": "mallory"
+              },
+              "createdAt": "2026-10-28T13:00:00Z",
+              "body": "@dependabot recreate"
+            }
+          ]
+        }
+      ],
+      "workflows": [],
+      "runs": {},
+      "required_checks": [
+        "ci"
+      ],
+      "alerts": {
+        "status": "ok",
+        "items": []
+      },
+      "tasks": [],
+      "kogut_issues": [],
+      "dependabot_config": true,
+      "local_clone": {
+        "path": "/tmp/epsilon",
+        "present": true
+      }
+    },
+    {
       "name": "gamma",
       "error": "gh: Not Found (HTTP 404)"
     }

@@ -26,6 +26,7 @@
     ],
     "ask": [
       "Bash(./scripts/merge-dependabot.sh:*)",
+      "Bash(./scripts/dependabot-command.sh:*)",
       "Bash(./scripts/open-fix-pr.sh:*)",
       "Bash(./scripts/update-fix-pr.sh:*)",
       "Bash(./scripts/issues.sh:*)",

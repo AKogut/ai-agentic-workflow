@@ -61,7 +61,7 @@ flowchart LR
 3. **Judge.** The model works only where judgement is needed:
    - For a major bump, it reads the release notes and searches the code for what changed.
    - For a red workflow, it reads the failed log ([`failed-log.sh`](scripts/failed-log.sh)) and the code on the default branch ([`repo.sh`](scripts/repo.sh)). It classifies the cause as external, regression, dependency, infra or flaky, and proposes the smallest fix.
-4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The merge is made by `kogut-agent[bot]`, the script never passes `--admin`, and the owner approves every call.
+4. **Merge.** [`merge-dependabot.sh`](scripts/merge-dependabot.sh) collects the repository again and merges a PR only when the gate says it is ready, pinned to the commit the gate judged. A major needs `--major`, which the model adds after its review. The merge is made by `kogut-agent[bot]`, the script never passes `--admin`, and the owner approves every call. A Dependabot PR that is stuck (behind, in conflict for a day, or red on an older base) gets `@dependabot rebase` or `recreate` from [`dependabot-command.sh`](scripts/dependabot-command.sh), once per head commit, and only where the rules in `signals.jq` name that command.
 5. **Track.** [`issues.sh`](scripts/issues.sh) keeps one GitHub issue per finding: a red workflow, a disabled one, critical and high alerts, hygiene gaps, and the majors the model says need me. Each finding carries a stable key from `signals.jq`, so a run updates the issue's facts instead of opening a duplicate, and closes the issue with a comment once the finding is gone. The rules live in [`issues.jq`](scripts/issues.jq) and are tested. The model writes only the diagnosis. The issue list becomes kogut's memory between runs and a public record of what it found and closed.
 6. **Fix.** `/kogut fix <repo> <what>` turns a diagnosis into a pull request. [`fix-start.sh`](scripts/fix-start.sh) checks out the default branch in a worktree, and the model makes the smallest change there. When the change touches a manifest, for example an `overrides` entry for a transitive alert that Dependabot cannot move, [`fix-lockfile.sh`](scripts/fix-lockfile.sh) regenerates the lockfile with npm or pnpm in lockfile-only mode, with scripts off, and shows which locked versions changed. [`open-fix-pr.sh`](scripts/open-fix-pr.sh) then scans the change with gitleaks and opens it as a PR from `kogut-agent[bot]`. The owner reviews and merges it on GitHub, and kogut never merges its own fixes. If the PR goes red, or I leave a review, the next run follows up: [`update-fix-pr.sh`](scripts/update-fix-pr.sh) pushes a commit on the same branch, or answers with a comment when no change is needed. Only my reviews count, and after three follow-up commits the PR is mine.
 7. **Take tasks.** I hand kogut work by labelling an issue `kogut-task`. `/kogut tasks` takes on maintenance and migrations: it opens a PR that closes the issue, or answers on the issue when the task is out of scope or unclear ([`task-reply.sh`](scripts/task-reply.sh)). Only a label I added counts, which `signals.jq` decides and the script checks again on GitHub. kogut also takes on two kinds of its own issues without a label: alerts that no Dependabot PR covers, and a major that needs a migration. I still approve each PR and merge it. Features stay out of kogut's scope.
@@ -137,6 +137,7 @@ scripts/collect.sh              repository state → .kogut/state.json + signals
 scripts/signals.jq              the policy: merge gate, CI health, hygiene
 scripts/failed-log.sh           the part of a failed run that explains it
 scripts/merge-dependabot.sh     the only way kogut merges: re-checks the gate, never --admin
+scripts/dependabot-command.sh   @dependabot rebase or recreate, only where the rules name it
 scripts/issues.sh               one issue per finding: opened, updated, closed by the App
 scripts/issues.jq               the issue policy: when to open, update, keep, skip or close
 scripts/fix-start.sh            a worktree at origin's default branch for one fix
@@ -175,6 +176,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Tasks:** issues the owner labels `kogut-task` become PRs, within maintenance and migrations
 - [x] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix, with the lockfile regenerated in lockfile-only mode
 - [x] **Security fixes first:** a Dependabot PR that fixes a critical or high alert skips the cooldown
+- [x] **Dependabot commands:** stuck Dependabot PRs get `@dependabot rebase` or `recreate` from `kogut-agent[bot]`
 
 ## License
 

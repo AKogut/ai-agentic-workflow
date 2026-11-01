@@ -74,6 +74,24 @@ check "without cooldown_skip_severity every PR waits the cooldown" \
     KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
 
 echo
+echo "commands to Dependabot"
+check "a PR behind the default branch asks for a rebase" \
+  'pr("epsilon"; 60) | .command == {name: "rebase", reason: "behind the default branch"}'
+check "a conflict asks for a rebase once Dependabot has had a day to rebase" \
+  '[pr("epsilon"; 61, 62) | .command.name] == ["rebase", null]'
+check "a PR someone else edited asks to be recreated" \
+  'pr("epsilon"; 63) | .command.name == "recreate" and (.dependabot_note.text | startswith("Looks like this PR has been edited"))'
+check "when Dependabot says it cannot update, no command repeats it" \
+  'pr("epsilon"; 64) | .command == null and (.dependabot_note.text | startswith("Dependabot cannot update"))'
+check "kogut asks once per head, and comments before the head are history" \
+  '(pr("epsilon"; 65) | .command == null and .asked == {command: "rebase", at: "2026-10-28T12:00:00Z"})
+   and (pr("epsilon"; 66) | .command.name == "rebase" and .asked == null and .dependabot_note == null)'
+check "a red PR asks for a rebase only when the base has moved since it failed" \
+  '[pr("epsilon"; 67, 68) | .command.name] == ["rebase", null]'
+check "a stranger cannot speak for Dependabot or for kogut" \
+  'pr("epsilon"; 69) | .command.name == "rebase" and .dependabot_note == null and .asked == null'
+
+echo
 echo "version bumps"
 check "patch, minor and major are read from the title" \
   '[pr("alpha"; 1, 4, 2) | .bump.semver] == ["patch", "minor", "major"]'
