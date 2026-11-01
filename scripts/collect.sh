@@ -65,8 +65,28 @@ collect_repo() {
   # nested commits and authors could exceed 500,000 nodes, and 100 PRs would.
   gh pr list -R "$full" --state open --limit 10 --author "app/$(kogut_app_slug)" \
     --json number,commits,reviews,comments >"$dir/kogut-prs.json"
-  jq --slurpfile extra "$dir/kogut-prs.json" \
-    'map(. as $pr | . + ([$extra[0][] | select(.number == $pr.number)][0] // {}))' \
+  # Dependabot's PRs carry the date of their head commit and their latest
+  # comments, where Dependabot says why it cannot rebase and where kogut's own
+  # commands show. Asking for the last few of each keeps the query small.
+  # shellcheck disable=SC2016 # $owner and $name are GraphQL variables
+  api_or '[]' graphql -F owner="$owner" -F name="$repo" -f query='
+    query($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
+        pullRequests(states: OPEN, first: 100) {
+          nodes {
+            number
+            author { login }
+            commits(last: 1) { nodes { commit { committedDate } } }
+            comments(last: 10) { nodes { author { login } createdAt body } }
+          }
+        }
+      }
+    }' --jq '[.data.repository.pullRequests.nodes[] | select(.author.login == "dependabot")
+      | {number, head_committed_at: .commits.nodes[0].commit.committedDate,
+         comments: [.comments.nodes[] | {author: {login: .author.login}, createdAt, body: .body[0:500]}]}]' \
+    >"$dir/dependabot-prs.json"
+  jq --slurpfile kogut "$dir/kogut-prs.json" --slurpfile dependabot "$dir/dependabot-prs.json" \
+    'map(. as $pr | . + ([$kogut[0][], $dependabot[0][] | select(.number == $pr.number)][0] // {}))' \
     "$dir/prs.json" >"$dir/prs-merged.json" && mv "$dir/prs-merged.json" "$dir/prs.json"
 
   gh api "repos/$full/actions/workflows?per_page=100" \

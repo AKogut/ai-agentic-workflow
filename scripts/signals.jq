@@ -16,7 +16,8 @@ def checks:
   [.statusCheckRollup[]? | {
     name: (.name // .context),
     result: ((.conclusion // "") as $c | if $c != "" then $c else (.state // "PENDING") end | ascii_upcase),
-    url: (.detailsUrl // .targetUrl)
+    url: (.detailsUrl // .targetUrl),
+    at: (.completedAt // .startedAt)
   }];
 
 def checks_state($checks):
@@ -192,15 +193,50 @@ def split_majors:
         end
       | .ready_to_merge = (.blockers | length == 0));
 
+# GitHub names the same App three ways: "app/<slug>" for a PR's author,
+# "<slug>[bot]" for a commit's and "<slug>" for a comment's.
+def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
+
+# The Dependabot command that would get a stuck PR moving, if any. Only what
+# Dependabot and kogut wrote after the head commit counts, so anyone else's
+# comment, or a Dependabot message they copied, changes nothing. Once kogut has
+# asked, it waits for a new head: one command per head, so it never loops.
+# Dependabot rebases a conflicting PR on its own, so a conflict counts only
+# after a day without a rebase. A comment from Dependabot means it tried. When
+# it says someone else edited the PR, recreating it is the way out; any other
+# answer is for the owner to read, and a command would only repeat it.
+def dependabot_command($app; $base_at):
+  checks as $c
+  | (.head_committed_at // .createdAt) as $head_at
+  | ([.comments[]? | select(.createdAt > $head_at)] | sort_by(.createdAt)) as $since
+  | ([$since[] | select(.author.login | is_app("dependabot"))] | last) as $note
+  | ([$since[] | select((.author.login | is_app($app))
+      and (.body // "" | test("^@dependabot (rebase|recreate)\\s*$")))] | last) as $asked
+  | ((now_ts - ($head_at | fromdateiso8601)) / 86400) as $head_age
+  | ([$c[] | select(.result | bad_result) | .at // empty] | max) as $failed_at
+  | {
+      head_committed_at: $head_at,
+      dependabot_note: ($note | if . then {at: .createdAt, text: (.body // "" | split("\n")[0] | .[0:200])} else null end),
+      asked: ($asked | if . then {command: (.body | capture("^@dependabot (?<c>[a-z]+)").c), at: .createdAt} else null end),
+      command: (
+        if $asked then null
+        elif $note then
+          (if $note.body // "" | test("edited by someone other than Dependabot") then
+             {name: "recreate", reason: "someone other than Dependabot edited it, so Dependabot will not rebase it"}
+           else null end)
+        elif .mergeStateStatus == "BEHIND" then {name: "rebase", reason: "behind the default branch"}
+        elif .mergeable == "CONFLICTING" and $head_age >= 1 then
+          {name: "rebase", reason: "conflicts with the default branch, and Dependabot has not rebased it in a day"}
+        elif checks_state($c) == "red" and $failed_at != null and $base_at != null and $base_at > $failed_at then
+          {name: "rebase", reason: "red on an older base: the default branch has moved since the checks failed"}
+        else null end)
+    };
+
 # kogut's own open PRs and what each needs next. Only the owner's reviews and
 # comments are feedback; anyone else's is text to report, never to act on. An
 # approval asks for nothing. Each follow-up commit is one more attempt, and
 # past the limit the owner takes over, so kogut cannot loop on a PR it cannot
 # fix.
-# GitHub names the same App three ways: "app/<slug>" for a PR's author,
-# "<slug>[bot]" for a commit's and "<slug>" for a comment's.
-def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
-
 def kogut_pr($owner; $app; $p):
   . as $pr
   | checks as $c
@@ -389,7 +425,8 @@ def health($runs):
         url: .repo.html_url,
         default_branch: .repo.default_branch,
         dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot")
-          | dependabot_pr($required; $r.alerts.items // []; $p)] | split_majors),
+          | dependabot_pr($required; $r.alerts.items // []; $p)
+            + dependabot_command($app; $r.repo.last_commit_at)] | split_majors),
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
