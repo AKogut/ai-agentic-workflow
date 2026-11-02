@@ -358,6 +358,9 @@ def findings:
   . as $r
   | [
       ($r.ci_failing[]
+        # Dependabot's own runs are not the repository's CI: a red one usually
+        # means it cannot lift a transitive package. The report still lists them.
+        | select(.path | startswith("dynamic/dependabot/") | not)
         # One red run can be a blip; two in a row, or one left red for a day, is not.
         | select(.failing_streak >= 2
             or (.latest_run.created_at | if . then days_since >= 1 else false end))

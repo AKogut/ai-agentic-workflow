@@ -245,6 +245,11 @@ check "a flaky workflow is not a finding" \
 check "a single red run becomes a finding only once it is a day old" \
   '(repo("delta") | .ci_failing | length) == 2
    and (repo("delta") | [.findings[] | select(.kind == "ci") | .facts.workflow]) == ["Report"]'
+check "a red Dependabot Updates run is reported but is not a finding" \
+  '(repo("delta") | any(.ci_failing[]; .path == "dynamic/dependabot/dependabot-updates"))
+   and (repo("delta") | [.findings[] | select(.kind == "ci")] == [])' \
+  "$(jq '(.repos[] | select(.name == "delta") | .workflows[] | select(.name == "Report") | .path) = "dynamic/dependabot/dependabot-updates"' tests/fixtures/state.json |
+    KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
 check "a disabled workflow is a finding" \
   'repo("alpha") | any(.findings[]; .key == "workflow-disabled:.github/workflows/old-nightly.yml" and .facts.state == "disabled_inactivity")'
 check "critical and high alerts are one finding, worst first" \
