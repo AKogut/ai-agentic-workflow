@@ -33,6 +33,7 @@
       "Bash(./scripts/update-fix-pr.sh:*)",
       "Bash(./scripts/issues.sh:*)",
       "Bash(./scripts/task-reply.sh:*)",
+      "Bash(./scripts/prune-branches.sh:*)",
       "Bash(gh pr merge:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr close:*)",

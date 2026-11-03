@@ -56,7 +56,7 @@ collect_repo() {
   last_commit="$(api_or '{}' "repos/$full/commits/$branch" --jq '{sha, date: .commit.committer.date}')"
 
   gh pr list -R "$full" --state open --limit 100 \
-    --json number,title,body,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,url \
+    --json number,title,body,author,isDraft,createdAt,mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,baseRefName,url \
     >"$dir/prs.json"
 
   # kogut's own PRs also carry their commits, reviews and comments, which the
@@ -139,6 +139,40 @@ collect_repo() {
     echo '{"status": "unavailable", "items": []}' >"$dir/alerts.json"
   fi
 
+  # Every branch, with its tip and the PRs that had it as their head, newest
+  # first, which is what the pruning rule in signals.jq reads. Paginated, so a
+  # repository with more than 100 branches is read in full, and about 2,200
+  # nodes a page against GitHub's limit of 500,000. A branch with more than 20
+  # PRs may lose its older ones, and without a match it stays. A failure leaves
+  # the status unavailable, and then nothing counts as prunable.
+  local branches
+  # shellcheck disable=SC2016 # these are GraphQL variables
+  if branches="$(gh api graphql --paginate -F owner="$owner" -F name="$repo" -f query='
+    query($owner: String!, $name: String!, $endCursor: String) {
+      repository(owner: $owner, name: $name) {
+        refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            name
+            branchProtectionRule { id }
+            rules(first: 1) { totalCount }
+            target { ... on Commit { oid committedDate } }
+            associatedPullRequests(first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
+              nodes { number state headRefOid baseRefName isCrossRepository }
+            }
+          }
+        }
+      }
+    }' --jq '.data.repository.refs.nodes[] | {name,
+        protected: (.branchProtectionRule != null or .rules.totalCount > 0),
+        tip: .target.oid, tip_at: .target.committedDate,
+        prs: [.associatedPullRequests.nodes[] | {number, state, head: .headRefOid, base: .baseRefName, cross: .isCrossRepository}]}' \
+    2>/dev/null)"; then
+    jq -s '{status: "ok", items: .}' <<<"$branches" >"$dir/branches.json"
+  else
+    echo '{"status": "unavailable", "items": []}' >"$dir/branches.json"
+  fi
+
   # Tasks: open issues labelled kogut-task, with who added the label (only the
   # owner can hand kogut work) and their comments, which show whether kogut
   # has answered.
@@ -201,6 +235,7 @@ collect_repo() {
     --slurpfile runs "$dir/runs.json" \
     --slurpfile required "$dir/required.json" \
     --slurpfile alerts "$dir/alerts.json" \
+    --slurpfile branches "$dir/branches.json" \
     --slurpfile tasks "$dir/tasks.json" \
     --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
@@ -219,6 +254,7 @@ collect_repo() {
       runs: $runs[0],
       required_checks: $required[0],
       alerts: $alerts[0],
+      branches: $branches[0],
       tasks: $tasks[0],
       kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,

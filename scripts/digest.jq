@@ -53,7 +53,8 @@ def report:
         line("Hygiene"; .hygiene_issues | join("; ")),
         line("Node"; if $node == "" then "" else "`\($rt.pin)` in `\($rt.file)`, \($node)."
           + (if $rt.active_lts then " Active LTS: \($rt.active_lts)." else "" end) end),
-        line("In cooldown"; if $waiting == [] then "" else plural($waiting | length; "PR") end)
+        line("In cooldown"; if $waiting == [] then "" else plural($waiting | length; "PR") end),
+        line("Merged branches to prune"; (.branches.prunable // []) | length | if . == 0 then "" else tostring end)
       ] as $lines
     | {
         name,
@@ -64,7 +65,8 @@ def report:
           else "green" end),
         text: (["*Daily digest: read-only, nothing was changed.*"]
           + (if ($lines | map(select(
-                 (startswith("**In cooldown") or (startswith("**Node") and $rt.flagged != true)) | not))) == []
+                 (startswith("**In cooldown") or startswith("**Merged branches")
+                   or (startswith("**Node") and $rt.flagged != true)) | not))) == []
              then ["Nothing needs you."] else [] end)
           + $lines | join("\n"))
       }
