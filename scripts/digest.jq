@@ -34,6 +34,8 @@ def report($root):
     # kogut's own issues show as their alerts and majors; these are the owner's.
     | [.tasks[] | select((.auto | not) and .needs == "start")] as $tasks
     | [.tasks[] | select((.auto | not) and .needs == "owner")] as $answered
+    | [(.features // [])[] | select(.needs == "owner")] as $plans
+    | [(.features // [])[] | select(.needs | IN("plan", "build"))] as $to_build
     | [.other_prs[] | select(.stale)] as $stale
     | [.workflows_disabled[] | select(.action != null)] as $disabled
     | (.url) as $url
@@ -60,6 +62,8 @@ def report($root):
         line("kogut PRs with work for kogut"; $for_kogut | links),
         line("Tasks waiting for kogut"; $tasks | links),
         line("Tasks waiting for you"; $answered | links),
+        line("Feature plans waiting for you"; $plans | links),
+        line("Features waiting for kogut"; $to_build | links),
         list("Other PRs gone stale"; $stale | map("\(link)\(if .draft then " (draft)" else "" end), \(.age_days | floor) days old")),
         list("CI red"; $red | map("[\(.name)](\(.latest_run.url)), \(.failing_streak) in a row"
           + (if (.cause.signature // null) == null then "" else ": \(.cause.kind) (\(.cause.signature))" end))),
@@ -80,7 +84,7 @@ def report($root):
         name,
         status: (
           if $red != [] or (($s.critical // 0) + ($s.high // 0)) > 0 then "red"
-          elif ($ready + $stuck + $for_owner + $for_kogut + $tasks + $answered + $stale + $disabled + $old_secrets) != []
+          elif ($ready + $stuck + $for_owner + $for_kogut + $tasks + $answered + $plans + $to_build + $stale + $disabled + $old_secrets) != []
             or .hygiene_issues != [] or $rt.flagged == true then "yellow"
           else "green" end),
         text: ([if $auto_merged == [] then "*Daily digest: read-only, nothing was changed.*"

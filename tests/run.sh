@@ -889,6 +889,134 @@ check "the config turns it on, with a limit" \
   '.policy.auto_merge | .enabled == true and (.limit_per_repo | type) == "number" and .limit_per_repo > 0' "$(cat kogut.config.json)"
 
 echo
+echo "feature requests"
+# Each argument is a jq expression for an issue. Single-quoted, so the shell leaves it alone.
+needs_of() {
+  jq -cn 'def base: {labeled: [{actor: "example", at: "2026-11-01T00:00:00Z"}], approvals: [], labels: [{name: "kogut-feature"}], comments: []};
+          def plan($at): {author: {login: "kogut-agent[bot]"}, createdAt: $at, body: "The plan\n<!-- kogut-plan -->"};
+          def said($who; $at): {author: {login: $who}, createdAt: $at, body: "Words"};
+          def approved($who; $at): .approvals += [{actor: $who, at: $at}] | .labels += [{name: "kogut-plan-approved"}];
+          '"$1" |
+    jq --arg owner example --arg app kogut-agent --argjson enabled "${2:-true}" --argjson prs "${3:-[]}" -f scripts/feature-state.jq
+}
+check "the owner's label asks for a plan first" '. == "plan"' "$(needs_of 'base')"
+check "a repository outside policy.feature.repos takes none" '. == "not-enabled"' "$(needs_of 'base' false)"
+check "someone else's label makes no feature request" '. == "unauthorized"' \
+  "$(needs_of 'base | .labeled = [{actor: "mallory", at: "2026-11-01T00:00:00Z"}]')"
+check "the latest label decides" '. == "unauthorized"' \
+  "$(needs_of 'base | .labeled += [{actor: "mallory", at: "2026-11-02T00:00:00Z"}]')"
+check "a kogut PR that names it carries it on" '. == "in-progress"' "$(needs_of 'base' true '[5]')"
+check "a plan waits for the owner" '. == "owner"' "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z")]')"
+check "the owner answering a plan asks for a new one" '. == "plan"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z"), said("example"; "2026-11-03T00:00:00Z")]')"
+check "the owner speaking before the plan changes nothing" '. == "owner"' \
+  "$(needs_of 'base | .comments = [said("example"; "2026-11-01T12:00:00Z"), plan("2026-11-02T00:00:00Z")]')"
+check "someone else answering a plan changes nothing" '. == "owner"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z"), said("mallory"; "2026-11-03T00:00:00Z")]')"
+check "the owner's approval after the plan lets kogut build" '. == "build"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z")] | approved("example"; "2026-11-03T00:00:00Z")')"
+check "an approval stands when the owner comments after it" '. == "build"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z"), said("example"; "2026-11-04T00:00:00Z")] | approved("example"; "2026-11-03T00:00:00Z")')"
+check "a new plan needs a new approval" '. == "owner"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z"), plan("2026-11-04T00:00:00Z")] | approved("example"; "2026-11-03T00:00:00Z")')"
+check "someone else's approval does not count" '. == "owner"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z")] | approved("mallory"; "2026-11-03T00:00:00Z")')"
+check "an approval label taken off again does not count" '. == "owner"' \
+  "$(needs_of 'base | .comments = [plan("2026-11-02T00:00:00Z")] | approved("example"; "2026-11-03T00:00:00Z") | .labels = [{name: "kogut-feature"}]')"
+check "an approval with no plan approves nothing" '. == "plan"' \
+  "$(needs_of 'base | approved("example"; "2026-11-03T00:00:00Z")')"
+check "a plan copied by someone else is no plan" '. == "plan"' \
+  "$(needs_of 'base | .comments = [said("mallory"; "2026-11-02T00:00:00Z") + {body: "<!-- kogut-plan -->"}]')"
+check "a comment from kogut without the marker is no plan" '. == "plan"' \
+  "$(needs_of 'base | .comments = [said("kogut-agent[bot]"; "2026-11-02T00:00:00Z")]')"
+
+features_in="$(jq '.policy.feature = {repos: ["alpha"], followup_limit: 8}
+  | (.repos[] | select(.name == "alpha")).features = [
+      {number: 90, title: "A feature", url: "https://example/90", labels: [], comments: [], approvals: [], labeled: [{actor: "example", at: "2026-10-01T00:00:00Z"}]}]
+  | (.repos[] | select(.name == "beta")).features = [
+      {number: 91, title: "Elsewhere", url: "https://example/91", labels: [], comments: [], approvals: [], labeled: [{actor: "example", at: "2026-10-01T00:00:00Z"}]}]
+  | (.repos[] | select(.name == "alpha") | .prs[] | select(.number == 31)).body += "\n<!-- kogut-feature: 90 -->"' tests/fixtures/state.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "the digest lists a feature request with what it needs" \
+  'repo("alpha") | .features == [{number: 90, title: "A feature", url: "https://example/90", prs: [], needs: "plan"}]' "$features_in"
+check "only a repository in policy.feature.repos takes one" 'repo("beta") | .features[0].needs == "not-enabled"' "$features_in"
+check "no setting means no repository takes one" \
+  'repo("alpha") | .features == [] and all(.kogut_prs[]; .feature == false)' "$signals"
+check "the daily digest says what a feature request waits for" \
+  '(.[0].text | contains("**Feature plans waiting for you:** [#1]")) and .[0].status == "yellow"
+   and (.[1].text | contains("**Features waiting for kogut:** [#1]")) and .[1].status == "yellow"' \
+  "$(digest_of '(quiet + {features: [one + {needs: "owner"}]}), (quiet + {features: [one + {needs: "build"}]})')"
+
+title_of() { printf '%s\n\n%s\n' "$1" "Body" >"$title_dir/text"; bash -c 'source scripts/lib.sh; kogut_fix_title "$1" "${2:-}"' _ "$title_dir/text" "${2:-}" 2>&1 | jq -Rs .; }
+title_dir="$(mktemp -d)"
+check "a feat title is refused on the maintenance path" 'contains("must be a maintenance Conventional Commit")' "$(title_of 'feat: a thing')"
+check "a feat title passes only on the feature path" '. == "feat: a thing\n"' "$(title_of 'feat: a thing' feature)"
+check "a maintenance title passes on either path" '. == "fix: a thing\n\n" or . == "fix: a thing\n"' "$(title_of 'fix: a thing' feature)"
+check "the feature path still wants a Conventional Commit" 'contains("must be a feature Conventional Commit")' "$(title_of 'a thing' feature)"
+rm -rf "$title_dir"
+
+check "a feature cannot ask to change workflows" 'contains("cannot change .github/workflows/")' \
+  "$(KOGUT_HOLD_FILE=/nonexistent ./scripts/open-fix-pr.sh flakemetry some-fix --feature 1 --workflows 2>&1 | jq -Rs .)"
+check "a PR is a task or a feature, not both" 'contains("usage:")' \
+  "$(KOGUT_HOLD_FILE=/nonexistent ./scripts/open-fix-pr.sh flakemetry some-fix --task 1 --feature 2 2>&1 | jq -Rs .)"
+
+size_dir="$(mktemp -d)"
+git -C "$size_dir" init -q
+git -C "$size_dir" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m base
+size_of() { bash -c 'source scripts/lib.sh; kogut_feature_size "$1" "${2:-}" && echo fits' _ "$size_dir" "${1:-}" 2>&1 | jq -Rs .; }
+seq 1 1400 >"$size_dir/small.txt"
+git -C "$size_dir" add -A
+check "a feature within the limit fits" '. == "fits\n"' "$(size_of)"
+check "what the PR already holds counts" 'contains("the limit is 1500")' \
+  "$(size_of '{"files": [{"path": "other.txt", "additions": 200, "deletions": 0}]}')"
+check "a file changed twice counts once" '. == "fits\n"' \
+  "$(size_of '{"files": [{"path": "small.txt", "additions": 50, "deletions": 0}]}')"
+seq 1 5000 >"$size_dir/package-lock.json"
+mkdir -p "$size_dir/app"
+seq 1 5000 >"$size_dir/app/pnpm-lock.yaml"
+git -C "$size_dir" add -A
+check "a lockfile does not count" '. == "fits\n"' "$(size_of)"
+seq 1 1600 >"$size_dir/small.txt"
+git -C "$size_dir" add -A
+check "too many lines are refused" 'contains("changes 1600 lines") and contains("split it")' "$(size_of)"
+seq 1 10 >"$size_dir/small.txt"
+for i in $(seq 1 31); do echo x >"$size_dir/f$i.txt"; done
+git -C "$size_dir" add -A
+check "too many files are refused" 'contains("changes 32 files")' "$(size_of)"
+rm -rf "$size_dir"
+
+echo
+echo "parallel work"
+plan_of() {
+  jq -cn 'def repo($n; $tasks; $features): {name: $n, tasks: $tasks, features: $features};
+          def t($n): {number: $n, url: "u\($n)", needs: "start", auto: false};
+          def f($n; $needs): {number: $n, url: "u\($n)", needs: $needs};
+          '"$1" | jq -c -f scripts/task-plan.jq
+}
+check "one piece of work per repository, oldest first" \
+  '([.run[] | [.repo, .number]] == [["a", 1]]) and ([.waiting[] | [.number, .why]] == [[2, "one piece of work per repository"]])' \
+  "$(plan_of '{repos: [repo("a"; [t(2), t(1)]; [])], holds: {}, busy: {}, limit: 3}')"
+check "several repositories run at once" '[.run[].repo] == ["a", "b"] and .waiting == []' \
+  "$(plan_of '{repos: [repo("a"; [t(1)]; []), repo("b"; [t(2)]; [])], holds: {}, busy: {}, limit: 3}')"
+check "the limit holds the rest back, and says so" \
+  '[.run[].repo] == ["a", "b"] and ([.waiting[] | [.repo, .why]] == [["c", "over the limit of 2 at once"]])' \
+  "$(plan_of '{repos: [repo("a"; [t(1)]; []), repo("b"; [t(2)]; []), repo("c"; [t(3)]; [])], holds: {}, busy: {}, limit: 2}')"
+check "the owner's work goes before kogut's own, across repositories" '[.run[].number] == [5]' \
+  "$(plan_of '{repos: [repo("a"; [t(1) + {auto: true}]; []), repo("b"; [t(5)]; [])], holds: {}, busy: {}, limit: 1}')"
+check "a repository on hold waits" \
+  '.run == [] and ([.waiting[] | [.number, .why]] == [[1, "on hold"], [2, "on hold"]])' \
+  "$(plan_of '{repos: [repo("a"; [t(1), t(2)]; [])], holds: {a: "on hold since x"}, busy: {}, limit: 3}')"
+check "a repository with a fix in progress waits" \
+  '.run == [] and (.waiting[0].why == "a fix is in progress: my-fix")' \
+  "$(plan_of '{repos: [repo("a"; [t(1)]; [])], holds: {}, busy: {a: ["my-fix"]}, limit: 3}')"
+check "a feature that needs a plan or may build counts, one waiting for the owner does not" \
+  '([.run[] | [.repo, .lane, .needs]] == [["a", "feature", "plan"], ["b", "feature", "build"]]) and .waiting == []' \
+  "$(plan_of '{repos: [repo("a"; []; [f(1; "plan")]), repo("b"; []; [f(2; "build")]), repo("c"; []; [f(3; "owner"), f(4; "in-progress"), f(5; "unauthorized"), f(6; "not-enabled")])], holds: {}, busy: {}, limit: 3}')"
+check "a task that needs nothing, or a repository that could not be read, gives no work" '.run == [] and .waiting == []' \
+  "$(plan_of '{repos: [repo("a"; [t(1) + {needs: "owner"}, t(2) + {needs: "in-progress"}, t(3) + {needs: "unauthorized"}]; []), {name: "b", error: "boom"}], holds: {}, busy: {}, limit: 3}')"
+check "the config sets a limit" '.policy.parallel_agents > 0 and (.policy.feature.repos | length) > 0' "$(cat kogut.config.json)"
+
+echo
 echo "hold"
 hold_dir="$(mktemp -d)"
 hold_file="$hold_dir/hold.json"
@@ -938,6 +1066,7 @@ for call in \
   'open-fix-pr.sh flakemetry some-fix' \
   'update-fix-pr.sh flakemetry some-fix' \
   'task-reply.sh flakemetry 1' \
+  'task-reply.sh flakemetry 1 --plan' \
   'dismiss-alert.sh flakemetry x package-lock.json --reason not_used --comment y' \
   'prune-branches.sh flakemetry --dry-run'; do
   # shellcheck disable=SC2086 # the call is split on purpose

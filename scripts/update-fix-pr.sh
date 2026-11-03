@@ -12,7 +12,9 @@
 # the head the worktree started from, and the branch moves only as a fast
 # forward from that head, so nothing anyone pushed meanwhile is overwritten.
 # After policy.followup_limit follow-up commits the script refuses: the owner
-# takes over.
+# takes over. A feature's PR has its own limit, policy.feature.followup_limit,
+# because CI is the only place its code runs, and it still may not change
+# .github/workflows/ or grow past policy.feature's size limits.
 #
 # With --comment-only the whole file is the comment and nothing is committed:
 # the answer to a question, or to a request that needs no change. A comment is
@@ -62,11 +64,17 @@ fi
 full="$(kogut_owner)/$repo"
 branch="kogut/$slug"
 limit="$(kogut_policy followup_limit)"
-pr="$(gh pr view "$number" -R "$full" --json state,author,headRefName,headRefOid,url,commits)"
+pr="$(gh pr view "$number" -R "$full" --json state,author,headRefName,headRefOid,url,commits,body,files)"
 [ "$(jq -r '.state' <<<"$pr")" = OPEN ] || die "#$number is not open"
 [ "$(jq -r '.author.login' <<<"$pr")" = "app/$(kogut_app_slug)" ] || die "#$number is not kogut's PR"
 [ "$(jq -r '.headRefName' <<<"$pr")" = "$branch" ] || die "#$number is not on $branch"
 [ "$(jq -r '.headRefOid' <<<"$pr")" = "$head" ] || die "#$number moved since the worktree started; start again"
+if jq -e '(.body // "") | test("<!-- kogut-feature: [0-9]+ -->")' <<<"$pr" >/dev/null; then
+  limit="$(jq -r '.policy.feature.followup_limit // empty' "$KOGUT_CONFIG")"
+  [ -n "$limit" ] || die "policy.feature.followup_limit is not set"
+  [ "$workflows" = false ] || die "a feature cannot change .github/workflows/: that stays the owner's"
+  [ "$comment_only" = true ] || kogut_feature_size "$worktree" "$pr"
+fi
 # The PR's first commit opened it; every later one of kogut's is an attempt.
 attempts="$(jq --arg bot "$(kogut_app_bot)" '[.commits[] | select(any(.authors[]; .login == $bot))] | length - 1' <<<"$pr")"
 attempt=$((attempts + 1))

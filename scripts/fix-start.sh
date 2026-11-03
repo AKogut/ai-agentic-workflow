@@ -14,6 +14,10 @@
 # blank line, then the body (for a follow-up: the commit message, then the
 # comment for the PR). The checkout is detached and nothing is committed
 # locally: the commit is made on GitHub, as the kogut App.
+#
+# One fix at a time per repository, so agents running in parallel cannot write to
+# the same one: while a worktree exists, a new start in that repository is
+# refused. The check and the creation hold a lock, so two starts cannot both pass.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -25,6 +29,17 @@ kogut_require_repo "$repo"
 dir="$(kogut_repo_path "$repo")"
 [ -d "$dir/.git" ] || die "no local clone of $repo at $dir"
 slug_re='^[a-z0-9][a-z0-9-]{1,48}$'
+
+# Takes the repository for this start, or dies naming the fix already in it.
+claim_repo() {
+  local lock="$KOGUT_ROOT/.kogut/fixes/$repo.lock" busy
+  mkdir -p "$KOGUT_ROOT/.kogut/fixes"
+  mkdir "$lock" 2>/dev/null || die "another start in $repo is running; try again (or remove $lock if none is)"
+  # shellcheck disable=SC2064 # the path is fixed now, on purpose
+  trap "rmdir '$lock'" EXIT
+  busy="$(kogut_fix_worktrees "$repo" | paste -sd, -)"
+  [ -z "$busy" ] || die "a fix is already in progress in $repo: $busy. Finish it, or discard it with fix-start.sh $repo <slug> --discard"
+}
 
 if [ "$2" = --pr ]; then
   [ $# -eq 3 ] || die "$usage"
@@ -39,6 +54,7 @@ if [ "$2" = --pr ]; then
   [ "$branch" = "kogut/$slug" ] && [[ "$slug" =~ $slug_re ]] || die "#$number is on $branch, not on a kogut/<slug> branch"
   worktree="$KOGUT_ROOT/.kogut/fixes/$repo/$slug"
   [ ! -e "$worktree" ] || die "fix $repo/$slug already exists at $worktree; open it or discard it"
+  claim_repo
   git -C "$dir" fetch --quiet origin "refs/pull/$number/head"
   [ "$(git -C "$dir" rev-parse FETCH_HEAD)" = "$head" ] || die "#$number moved while it was fetched; start again"
   mkdir -p "$(dirname "$worktree")"
@@ -66,6 +82,7 @@ if [ $# -eq 3 ]; then
 fi
 
 [ ! -e "$worktree" ] || die "fix $repo/$slug already exists at $worktree; open it or discard it"
+claim_repo
 branch="$(kogut_default_branch "$repo")"
 git -C "$dir" fetch --quiet origin "$branch"
 mkdir -p "$(dirname "$worktree")"

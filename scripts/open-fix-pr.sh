@@ -3,6 +3,14 @@
 # and the PR show as <slug>[bot], and the owner reviews and merges on GitHub.
 #
 #   ./scripts/open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue>] [--dry-run]
+#   ./scripts/open-fix-pr.sh <repo> <slug> --feature <issue> [--dry-run]
+#
+# --feature opens a feature the owner approved: feature.jq, asked on GitHub now,
+# must say the owner approved the latest plan. Only this path allows a feat title.
+# The PR is a draft, because CI is all that has run its code, and it stays within
+# policy.feature's size limits. A feature never changes .github/workflows/: a
+# workflow on the branch would run with the repository's secrets before review,
+# and the plan is not the place to approve that.
 #
 # --task links the PR to a task the owner handed kogut (an issue the owner
 # labelled kogut-task, which is checked on GitHub first) and says so on the
@@ -23,14 +31,14 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-usage="usage: open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue>] [--dry-run]"
+usage="usage: open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue> | --feature <issue>] [--dry-run]"
 [ $# -ge 2 ] || die "$usage"
 repo="$1" slug="$2"
 shift 2
 kogut_require_repo "$repo"
 kogut_require_not_held "$repo"
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{1,48}$ ]] || die "not a fix slug: $slug"
-workflows=false dry_run=false task=""
+workflows=false dry_run=false task="" feature=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --workflows) workflows=true ;;
@@ -40,17 +48,26 @@ while [ $# -gt 0 ]; do
       task="$2"
       shift
       ;;
+    --feature)
+      [ $# -ge 2 ] || die "$usage"
+      feature="$2"
+      shift
+      ;;
     *) die "$usage" ;;
   esac
   shift
 done
 [ -z "$task" ] || [[ "$task" =~ ^[0-9]+$ ]] || die "a task is an issue number: $task"
+[ -z "$feature" ] || [[ "$feature" =~ ^[0-9]+$ ]] || die "a feature is an issue number: $feature"
+[ -z "$task" ] || [ -z "$feature" ] || die "$usage"
+[ -z "$feature" ] || [ "$workflows" = false ] || die "a feature cannot change .github/workflows/: that stays the owner's"
 worktree="$KOGUT_ROOT/.kogut/fixes/$repo/$slug"
 text="$worktree.md"
 [ -d "$worktree" ] || die "there is no fix $repo/$slug: start it with fix-start.sh"
-title="$(kogut_fix_title "$text")"
+title="$(kogut_fix_title "$text" "${feature:+feature}")"
 body="$(tail -n +3 "$text")"
 kogut_stage "$worktree" "$workflows" "$text"
+[ -z "$feature" ] || kogut_feature_size "$worktree"
 
 full="$(kogut_owner)/$repo"
 base_branch="$(kogut_default_branch "$repo")"
@@ -62,10 +79,17 @@ if [ -n "$task" ]; then
   kind="$(kogut_task_check "$full" "$task")"
   if [ "$kind" = finding ]; then link="Refs #$task"; else link="Closes #$task"; fi
 fi
+if [ -n "$feature" ]; then
+  # Assigned first: inside [ "$(…)" = … ] a refused check would not stop the script.
+  stands="$(kogut_feature_state "$full" "$repo" "$feature")"
+  [ "$stands" = build ] || die "#$feature is not approved to build: it says $stands"
+  link="Closes #$feature"
+fi
 
 if [ "$dry_run" = true ]; then
   echo "PR: $title"
   [ -z "$link" ] || echo "task: $link"
+  [ -z "$feature" ] || echo "as a draft: CI is all that has run this code"
   echo "into: $full $base_branch at ${base:0:7}, from $branch, as $(kogut_app_bot)"
   echo "--- files"
   kogut_show_diff "$worktree"
@@ -94,14 +118,21 @@ gh api -X POST "repos/$full/git/refs" -f ref="refs/heads/$branch" -f sha="$commi
   printf -- '---\n'
   printf '<sub>Opened by [kogut](%s), the maintenance agent for this portfolio. %s reviews and merges.</sub>\n' \
     "$(jq -r '.app.homepage' "$KOGUT_CONFIG")" "$(kogut_owner)"
+  # update-fix-pr.sh and signals.jq read this to give the PR a feature's limit.
+  [ -z "$feature" ] || printf '<!-- kogut-feature: %s -->\n' "$feature"
 } >"$body_file"
-if ! url="$(gh pr create -R "$full" --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file")"; then
+draft=()
+[ -z "$feature" ] || draft=(--draft)
+if ! url="$(gh pr create -R "$full" --base "$base_branch" --head "$branch" --title "$title" --body-file "$body_file" ${draft[@]+"${draft[@]}"})"; then
   gh api -X DELETE "repos/$full/git/refs/heads/$branch" >/dev/null 2>&1 || true
   die "could not open the PR; the branch $branch was deleted again"
 fi
 
 if [ -n "$task" ]; then
   gh api -X POST "repos/$full/issues/$task/comments" -f body="kogut opened $url for this task." >/dev/null
+fi
+if [ -n "$feature" ]; then
+  gh api -X POST "repos/$full/issues/$feature/comments" -f body="kogut opened $url as a draft for this feature." >/dev/null
 fi
 
 git -C "$(kogut_repo_path "$repo")" worktree remove --force "$worktree"

@@ -98,6 +98,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | A failed read never closes a Node runtime issue | Without the release schedule or the repository's files, kogut cannot tell whether the finding is gone, so it flags nothing and keeps the issue. |
 | Logs are read for a name, never carried | A log is untrusted text, so `run-cause.sh` reduces it to a signature's name from a table of real failures, and nothing else reaches the snapshot, a report or an issue. A forged signature can cost one retry at most. |
 | Unattended merges for one narrow tier | Five `@types/node` patches should not wait for me to come back at a given hour. A launchd job with no model merges patches to direct dev dependencies past the cooldown, when the title and Dependabot's own commit metadata both say so and the default branch is green. I gave up reviewing those, knowingly: a bad patch that outlasts the cooldown and passes CI lands without anyone looking. Everything else still asks. |
+| Features need a plan I approved | kogut started as maintenance only. A feature takes judgement, so it goes through its own lane: a plan on the issue, code only after my label, and a draft PR that CI alone has run. It stays small enough to review, and I merge it. |
 | A stop switch in code, not in a note | When I work in a repository, kogut stays out. `hold.sh` makes every writing script refuse it, and a damaged switch holds everything rather than nothing. |
 | A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
@@ -160,7 +161,10 @@ scripts/open-fix-pr.sh          the only way kogut opens a PR: gitleaks, then th
 scripts/update-fix-pr.sh        a follow-up commit or an answer on kogut's own PR, within a limit
 scripts/fix-lockfile.sh         lockfile-only npm or pnpm in a fix's worktree, with a version summary
 scripts/pr-feedback.sh          the owner's reviews on a kogut PR; nobody else's words
-scripts/task-reply.sh           kogut's answer on a task it cannot start yet
+scripts/task-reply.sh           kogut's answer on a task it cannot start yet, or its plan for a feature
+scripts/task-plan.sh            what to start now, and what waits and why
+scripts/task-plan.jq            one piece of work per repository, and a limit on how many at once
+scripts/feature.jq              where a feature request stands: plan, waiting for me, or approved
 scripts/app.sh                  registers the GitHub App and checks its installation
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
@@ -195,6 +199,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Issues:** one issue per finding, updated every run and closed once the finding is gone
 - [x] **Follow-up:** kogut takes its own PRs to green and answers review comments
 - [x] **Tasks:** issues the owner labels `kogut-task` become PRs, within maintenance and migrations
+- [x] **Parallel work:** several tasks at once, one per repository, and I approve the PRs together
+- [x] **Features:** an issue I label gets a plan first, code only after I approve it, CI as the only runner, and I merge
 - [x] **Lockfile fixes:** `overrides` for transitive alerts that Dependabot cannot fix, with the lockfile regenerated in lockfile-only mode
 - [x] **Security fixes first:** a Dependabot PR that fixes a critical or high alert skips the cooldown
 - [x] **Dependabot commands:** stuck Dependabot PRs get `@dependabot rebase` or `recreate`, under my login, because Dependabot refuses an App
