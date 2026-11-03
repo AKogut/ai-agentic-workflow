@@ -146,11 +146,16 @@ def dependabot_pr($required; $alerts; $p):
   | fixed_alerts($dir; own_updates; $alerts) as $fixes
   | ($p.cooldown_skip_severity | severity_rank) as $skip
   | ($skip > 0 and any($fixes[]; (.severity | severity_rank) >= $skip)) as $urgent
+  | ($age < $p.cooldown_days and ($urgent | not)) as $held
   | {
       number, title, url,
+      branch: .headRefName,
       # The commit the gate judged; a merge must land exactly this one.
       head: .headRefOid,
       age_days: $age,
+      # A run started on the branch has the repository's secrets, which
+      # Dependabot's own runs do not, so it waits for the cooldown like a merge.
+      in_cooldown: $held,
       bump: $bump,
       updates: $updates,
       semver: $semver,
@@ -174,7 +179,7 @@ def dependabot_pr($required; $alerts; $p):
           "behind the default branch: the ruleset wants it up to date, and Dependabot rebases only on conflicts"
         else empty end),
         (if .isDraft then "draft" else empty end),
-        (if $age < $p.cooldown_days and ($urgent | not) then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
+        (if $held then "younger than the \($p.cooldown_days)-day cooldown" else empty end),
         (if $semver == null then "no versions in the title or the body" else empty end)
       ]
     };
@@ -198,19 +203,23 @@ def split_majors:
 def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
 
 # The Dependabot command that would get a stuck PR moving, if any. Only what
-# Dependabot and kogut wrote after the head commit counts, so anyone else's
-# comment, or a Dependabot message they copied, changes nothing. Once kogut has
-# asked, it waits for a new head: one command per head, so it never loops.
+# Dependabot and the owner wrote after the head commit counts, so anyone else's
+# comment, or a Dependabot message they copied, changes nothing. Commands go out
+# under the owner's login, because Dependabot refuses them from the App and from
+# anyone else without push access. That refusal is not an answer about the PR,
+# so it is left out. Once the owner has asked, kogut waits for a new head: one
+# command per head, so it never loops.
 # Dependabot rebases a conflicting PR on its own, so a conflict counts only
 # after a day without a rebase. A comment from Dependabot means it tried. When
 # it says someone else edited the PR, recreating it is the way out; any other
 # answer is for the owner to read, and a command would only repeat it.
-def dependabot_command($app; $base_at):
+def dependabot_command($owner; $base_at):
   checks as $c
   | (.head_committed_at // .createdAt) as $head_at
   | ([.comments[]? | select(.createdAt > $head_at)] | sort_by(.createdAt)) as $since
-  | ([$since[] | select(.author.login | is_app("dependabot"))] | last) as $note
-  | ([$since[] | select((.author.login | is_app($app))
+  | ([$since[] | select((.author.login | is_app("dependabot"))
+      and (.body // "" | contains("only users with push access") | not))] | last) as $note
+  | ([$since[] | select(.author.login == $owner
       and (.body // "" | test("^@dependabot (rebase|recreate)\\s*$")))] | last) as $asked
   | ((now_ts - ($head_at | fromdateiso8601)) / 86400) as $head_age
   | ([$c[] | select(.result | bad_result) | .at // empty] | max) as $failed_at
@@ -448,7 +457,7 @@ def ci_action($w; $runs; $head_sha; $app):
         default_branch: .repo.default_branch,
         dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot")
           | dependabot_pr($required; $r.alerts.items // []; $p)
-            + dependabot_command($app; $r.repo.last_commit_at)] | split_majors),
+            + dependabot_command($owner; $r.repo.last_commit_at)] | split_majors),
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         ci_failing: [$active[] | select(.health.streak > 0) | {
