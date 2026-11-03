@@ -15,7 +15,8 @@
     "pr_run_limit": 2,
     "secret_warn_days": 80,
     "secret_ignore": [],
-    "infra_retry_limit": 6
+    "infra_retry_limit": 6,
+    "auto_merge": { "enabled": true, "limit_per_repo": 5 }
   },
   "repos": [
     { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },

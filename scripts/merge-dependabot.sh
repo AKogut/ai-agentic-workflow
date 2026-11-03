@@ -3,7 +3,7 @@
 # ready. The state is collected afresh, so the decision never rests on an old
 # snapshot, and the merge is pinned to the commit the gate judged.
 #
-#   ./scripts/merge-dependabot.sh <repo> <pr> [<pr> ...] [--major] [--dry-run]
+#   ./scripts/merge-dependabot.sh <repo> <pr> [<pr> ...] [--major] [--head <sha>] [--dry-run]
 #
 # A list is one approval for the PRs it names, all in one repository: the owner
 # reads the numbers in the permission prompt. Each PR is still judged and merged
@@ -16,32 +16,41 @@
 # call of its own: --major takes one PR. --dry-run stops before the merge. The
 # merge is made by the kogut App, so it shows as kogut's, and the App has no way
 # past the ruleset: a PR that the ruleset blocks stays blocked. The script never
-# passes --admin either.
+# passes --admin either. --head takes one PR, and refuses when the commit the gate
+# judged is not the one the caller decided on, which is how auto-merge.sh calls it.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-usage="usage: merge-dependabot.sh <repo> <pr> [<pr> ...] [--major] [--dry-run]"
+usage="usage: merge-dependabot.sh <repo> <pr> [<pr> ...] [--major] [--head <sha>] [--dry-run]"
 [ $# -ge 2 ] || die "$usage"
 repo="$1"
 shift
 kogut_require_repo "$repo"
-major=false dry_run=false
+kogut_require_not_held "$repo"
+major=false dry_run=false expected=""
 prs=()
-for arg in "$@"; do
-  case "$arg" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --major) major=true ;;
     --dry-run) dry_run=true ;;
+    --head)
+      [ $# -ge 2 ] && [[ "$2" =~ ^[0-9a-f]{40}$ ]] || die "--head takes a full commit id"
+      expected="$2"
+      shift
+      ;;
     *)
-      [[ "$arg" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $arg"
-      prs+=("$arg")
+      [[ "$1" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $1"
+      prs+=("$1")
       ;;
   esac
+  shift
 done
 [ "${#prs[@]}" -gt 0 ] || die "$usage"
 
 if [ "${#prs[@]}" -gt 1 ]; then
   [ "$major" = false ] || die "--major takes one PR: a major is a call of its own"
+  [ -z "$expected" ] || die "--head takes one PR"
   left=""
   for n in "${prs[@]}"; do
     if [ "$dry_run" = true ]; then
@@ -88,6 +97,8 @@ fi
 
 head="$(jq -r '.head' <<<"$verdict")"
 [[ "$head" =~ ^[0-9a-f]{40}$ ]] || die "$repo #$pr: the snapshot has no head commit"
+[ -z "$expected" ] || [ "$head" = "$expected" ] ||
+  die "$repo #$pr moved from ${expected:0:7} to ${head:0:7} since it was judged"
 title="$(jq -r '.title' <<<"$verdict")"
 
 # Checked before the merge: an empty GH_TOKEN would make gh fall back to the

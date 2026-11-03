@@ -89,7 +89,8 @@ collect_repo() {
     --json number,commits,reviews,comments >"$dir/kogut-prs.json"
   # Dependabot's PRs carry the date of their head commit and their latest
   # comments, where Dependabot says why it cannot rebase and where kogut's own
-  # commands show. Asking for the last few of each keeps the query small.
+  # commands show. Asking for the last few of each keeps the query small. The head
+  # commit's message and authors are what the auto-merge rule reads.
   # shellcheck disable=SC2016 # $owner and $name are GraphQL variables
   api_or '[]' graphql -F owner="$owner" -F name="$repo" -f query='
     query($owner: String!, $name: String!) {
@@ -98,13 +99,15 @@ collect_repo() {
           nodes {
             number
             author { login }
-            commits(last: 1) { nodes { commit { committedDate } } }
+            commits(last: 1) { nodes { commit { committedDate message authors(first: 5) { nodes { user { login } } } } } }
             comments(last: 10) { nodes { author { login } createdAt body } }
           }
         }
       }
     }' --jq '[.data.repository.pullRequests.nodes[] | select(.author.login == "dependabot")
       | {number, head_committed_at: .commits.nodes[0].commit.committedDate,
+         head_message: .commits.nodes[0].commit.message,
+         head_authors: [.commits.nodes[0].commit.authors.nodes[]? | .user.login],
          comments: [.comments.nodes[] | {author: {login: .author.login}, createdAt, body: .body[0:500]}]}]' \
     >"$dir/dependabot-prs.json"
   jq --slurpfile kogut "$dir/kogut-prs.json" --slurpfile dependabot "$dir/dependabot-prs.json" \

@@ -20,6 +20,7 @@ usage="usage: dependabot-command.sh <repo> <pr> <rebase|recreate> [--dry-run]"
 [ $# -ge 3 ] && [ $# -le 4 ] || die "$usage"
 repo="$1" pr="$2" command="$3" dry_run=false
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 [[ "$pr" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $pr"
 case "$command" in rebase | recreate) ;; *) die "$usage" ;; esac
 if [ $# -eq 4 ]; then

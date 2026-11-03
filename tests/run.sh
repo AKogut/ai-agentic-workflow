@@ -817,5 +817,164 @@ check "the digest names a known cause next to a red workflow, and only a known o
                 (quiet + {ci_failing: [run(".github/workflows/n.yml") + {cause: {kind: "unknown", signature: null}}]})')"
 
 echo
+echo "auto-merge"
+am_fixture=tests/fixtures/auto-merge.json
+am="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq "$am_fixture")"
+am_helpers='def am($n): .repos[] | select(.name == "clean") | .dependabot_prs[] | select(.number == $n) | .auto_merge;
+  def why($n; $text): any(am($n).why[]; contains($text));'
+am_check() { check "$1" "$am_helpers $2" "$am"; }
+am_check "a green deps-dev patch past the cooldown is eligible" 'am(1) == {eligible: true, why: []}'
+am_check "a group of deps-dev patches is eligible" 'am(2).eligible'
+am_check "a production update is not, by the title or by the metadata" \
+  '(am(3).eligible | not) and why(3; "title does not say deps-dev") and why(3; "not direct:development")'
+am_check "a deps-dev title does not outweigh the metadata" \
+  'am(4) | (.eligible | not) and .why == ["the metadata names a dependency that is not direct:development"]'
+am_check "the metadata does not outweigh the title" \
+  'am(5) | (.eligible | not) and .why == ["the title does not say deps-dev"]'
+am_check "an indirect dependency is not a dev dependency" \
+  'am(6) | (.eligible | not) and .why == ["the metadata names a dependency that is not direct:development"]'
+am_check "a minor is not a patch" '(am(7).eligible | not) and why(7; "a minor update, not a patch")'
+am_check "a title that says patch does not outweigh the metadata" \
+  'am(8) | (.eligible | not) and .why == ["the metadata does not call every update a semver patch"]'
+am_check "a security update, which leaves out update-type, is not eligible" \
+  'am(9) | (.eligible | not) and .why == ["the metadata does not call every update a semver patch"]'
+am_check "one minor in a group keeps the group out" 'why(10; "does not call every update a semver patch") and (am(10).eligible | not)'
+am_check "one production update in a group keeps the group out" 'why(11; "not direct:development") and (am(11).eligible | not)'
+am_check "a head commit by someone else keeps the PR out" \
+  'am(12) | (.eligible | not) and .why == ["the head commit is not only Dependabot'"'"'s"]'
+am_check "so does a co-author" '(am(13).eligible | not) and why(13; "not only Dependabot")'
+am_check "unknown authors count as someone else" '(am(14).eligible | not) and why(14; "not only Dependabot")'
+am_check "a commit message that was not read keeps the PR out" \
+  'am(15) | (.eligible | not) and .why == ["the head commit'"'"'s Dependabot metadata cannot be read"]'
+am_check "a PR younger than the cooldown waits" \
+  'am(16) | (.eligible | not) and .why == ["1 day old, and this tier waits the full 3-day cooldown"]'
+am_check "a fix for a high alert skips the cooldown in the gate, but not here" \
+  '(.repos[] | select(.name == "clean") | .dependabot_prs[] | select(.number == 17) | .ready_to_merge)
+   and (am(17) | (.eligible | not) and .why == ["1 day old, and this tier waits the full 3-day cooldown"])'
+am_check "a second block quoted in the message reads as nothing" 'why(18; "metadata cannot be read") and (am(18).eligible | not)'
+am_check "a block with text after it reads as nothing" 'why(19; "metadata cannot be read") and (am(19).eligible | not)'
+am_check "a block without its opening line reads as nothing, first or further down" \
+  'why(20; "metadata cannot be read") and (am(20).eligible | not) and why(33; "metadata cannot be read") and (am(33).eligible | not)'
+am_check "a block without its closing line reads as nothing" 'why(21; "metadata cannot be read") and (am(21).eligible | not)'
+am_check "a field kogut does not know reads as nothing" 'why(22; "metadata cannot be read") and (am(22).eligible | not)'
+am_check "an empty block reads as nothing" 'why(23; "metadata cannot be read") and (am(23).eligible | not)'
+am_check "a block that opens without a name reads as nothing" \
+  'why(31; "metadata cannot be read") and why(32; "metadata cannot be read")'
+am_check "a major is out" '(am(24).eligible | not) and why(24; "a major update, not a patch")'
+am_check "red checks keep a PR out, with the gate's reason" \
+  'am(25) | (.eligible | not) and .why == ["not ready: checks are red"]'
+am_check "a draft stays out" 'am(26) | (.eligible | not) and .why == ["not ready: draft"]'
+am_check "a major split across PRs says what it belongs with" 'why(27; "belongs with #28")'
+am_check "a title without the prefix stays out, and so does one that only mentions it" \
+  'why(29; "title does not say deps-dev") and why(30; "title does not say deps-dev")'
+check "a red default branch keeps every PR waiting" \
+  '.repos[] | select(.name == "red") | .dependabot_prs[0].auto_merge
+   | (.eligible | not) and .why == ["the default branch is red: Nightly"]' "$am"
+check "a red run of Dependabot's own does not" \
+  '.repos[] | select(.name == "own-red") | .dependabot_prs[0].auto_merge.eligible' "$am"
+am_off() { jq "$1" "$am_fixture" | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq; }
+check "enabled: false merges nothing" \
+  '.repos[0].dependabot_prs[0].auto_merge | (.eligible | not) and .why == ["auto-merge is off"]' \
+  "$(am_off '.policy.auto_merge.enabled = false')"
+check "a missing setting merges nothing" \
+  '.repos[0].dependabot_prs[0].auto_merge | (.eligible | not) and .why == ["auto-merge is off"]' \
+  "$(am_off 'del(.policy.auto_merge)')"
+check "a setting of the wrong shape merges nothing" \
+  '.repos[0].dependabot_prs[0].auto_merge | (.eligible | not) and .why == ["auto-merge is off"]' \
+  "$(am_off '.policy.auto_merge = true')"
+check "without a cooldown setting nothing is old enough" \
+  '.repos[0].dependabot_prs[0].auto_merge | (.eligible | not) and any(.why[]; contains("waits the full unknown-day cooldown"))' \
+  "$(am_off 'del(.policy.cooldown_days)')"
+check "the config turns it on, with a limit" \
+  '.policy.auto_merge | .enabled == true and (.limit_per_repo | type) == "number" and .limit_per_repo > 0' "$(cat kogut.config.json)"
+
+echo
+echo "hold"
+hold_dir="$(mktemp -d)"
+hold_file="$hold_dir/hold.json"
+held_out() { KOGUT_HOLD_FILE="$hold_file" bash -c 'source scripts/lib.sh; if why="$(kogut_held "$1")"; then echo "held: $why"; else echo free; fi' _ "$1" 2>&1 | jq -Rs .; }
+check "no file means no hold" '. == "free\n"' "$(held_out flakemetry)"
+printf '{"repos":{"flakemetry":{"since":"2026-11-03T10:00:00Z","reason":"my work"}}}' >"$hold_file"
+check "a repository on hold says since when and why" \
+  '. == "held: on hold since 2026-11-03T10:00:00Z: my work\n"' "$(held_out flakemetry)"
+check "the others are free" '. == "free\n"' "$(held_out mobile-task-manager-automation)"
+for broken in '' 'not json' '[]' '{"repos":[]}' '{"other":{}}' '{"repos":{}} {"repos":{}}'; do
+  printf '%s' "$broken" >"$hold_file"
+  check "a hold file reading '$broken' holds everything" 'startswith("held: on hold, because the hold file cannot be read")' "$(held_out flakemetry)"
+done
+rm -f "$hold_file"
+mkdir "$hold_file"
+check "a directory in its place holds everything" 'startswith("held: on hold, because")' "$(held_out flakemetry)"
+rmdir "$hold_file"
+ln -s "$hold_dir/nowhere" "$hold_file"
+check "a broken link holds everything" 'startswith("held: on hold, because")' "$(held_out flakemetry)"
+rm -f "$hold_file"
+
+hold() { KOGUT_HOLD_FILE="$hold_file" ./scripts/hold.sh "$@" 2>&1 | jq -Rs .; }
+check "on names one repository, with its reason" \
+  'startswith("flakemetry: on hold since ") and endswith(": building\n")' "$(hold on flakemetry --reason building)"
+check "the rest stays free" 'contains("mobile-task-manager-automation: not on hold") and contains("flakemetry: on hold since")' "$(hold status)"
+check "off lifts it" '. == "flakemetry: not on hold\n"' "$(hold off flakemetry)"
+check "on with no repository holds all of them" \
+  '[split("\n")[] | select(. != "")] | length == 6 and all(.[]; contains(": on hold since "))' "$(hold on)"
+check "off with one repository leaves the others on hold" \
+  'contains("flakemetry: on hold") and contains("mobile-task-manager-automation: not on hold")' \
+  "$(hold off mobile-task-manager-automation >/dev/null; hold status)"
+check "off with no repository lifts them all" \
+  '[split("\n")[] | select(. != "")] | length == 6 and all(.[]; contains(": not on hold"))' "$(hold off)"
+check "a repository outside the config is refused" 'contains("is not in kogut.config.json")' "$(hold on nowhere)"
+printf 'broken' >"$hold_file"
+check "a hold file that cannot be read is not overwritten" 'contains("cannot be read")' "$(hold off)"
+check "and it is left as it was" '. == "broken"' "$(jq -Rs . <"$hold_file")"
+rm -f "$hold_file"
+
+printf '{"repos":{"flakemetry":{"since":"2026-11-03T10:00:00Z","reason":"my work"}}}' >"$hold_file"
+refused() { KOGUT_HOLD_FILE="$hold_file" "$@" 2>&1 | jq -Rs .; }
+for call in \
+  'merge-dependabot.sh flakemetry 1' \
+  'merge-dependabot.sh flakemetry 1 --dry-run' \
+  'dependabot-command.sh flakemetry 1 rebase' \
+  'run-workflow.sh flakemetry .github/workflows/ci.yml dispatch' \
+  'open-fix-pr.sh flakemetry some-fix' \
+  'update-fix-pr.sh flakemetry some-fix' \
+  'task-reply.sh flakemetry 1' \
+  'dismiss-alert.sh flakemetry x package-lock.json --reason not_used --comment y' \
+  'prune-branches.sh flakemetry --dry-run'; do
+  # shellcheck disable=SC2086 # the call is split on purpose
+  check "a hold stops $call" 'contains("flakemetry is on hold since") and contains("Nothing was done")' "$(refused ./scripts/$call)"
+done
+rm -rf "$hold_dir"
+
+check "merge-dependabot.sh refuses --head with a list" 'contains("--head takes one PR")' \
+  "$(KOGUT_HOLD_FILE=/nonexistent ./scripts/merge-dependabot.sh flakemetry 1 2 --head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2>&1 | jq -Rs .)"
+check "merge-dependabot.sh refuses a --head that is not a commit id" 'contains("--head takes a full commit id")' \
+  "$(KOGUT_HOLD_FILE=/nonexistent ./scripts/merge-dependabot.sh flakemetry 1 --head abc 2>&1 | jq -Rs .)"
+
+digest_full() {
+  jq -cn 'def quiet: {name: "r", url: "https://example/r", ci_failing: [], dependabot_prs: [], kogut_prs: [],
+            tasks: [], other_prs: [], workflows_disabled: [], hygiene_issues: []};
+          '"$1" | jq -c -f scripts/digest.jq
+}
+check "the digest says a repository is on hold, without changing the colour" \
+  '.[0] | .status == "green" and (.text | contains("**On hold:** since 2026-11-03: my work") and contains("Nothing needs you."))' \
+  "$(digest_full '{repos: [quiet], holds: {r: "on hold since 2026-11-03: my work"}}')"
+check "the digest stays quiet about a hold on another repository" \
+  '.[0].text | contains("On hold") | not' "$(digest_full '{repos: [quiet], holds: {other: "on hold since x"}}')"
+check "the digest lists today's auto-merges for its repository, without changing the colour" \
+  '.[0] | .status == "green" and (.text | contains("**Auto-merged:** [#1](https://example/r/pull/1), [#2](https://example/r/pull/2)") and contains("Nothing needs you.") and (contains("#3") | not))' \
+  "$(digest_full '{repos: [quiet], auto_merged: [{repo: "r", pr: 1, outcome: "merged"}, {repo: "r", pr: 2, outcome: "merged"}, {repo: "other", pr: 3, outcome: "merged"}]}')"
+check "the digest lists refusals, with why" \
+  '.[0].text | contains("**Auto-merge refused:**\n- [#4](https://example/r/pull/4): checks are red") and (contains("Auto-merged") | not) and (contains("Nothing needs you.") | not)' \
+  "$(digest_full '{repos: [quiet], auto_merged: [{repo: "r", pr: 4, outcome: "refused", reason: "checks are red"}]}')"
+check "the digest says the merges are the only change, and otherwise that it changed nothing" \
+  '(.[0].text | startswith("*Daily digest: the merges below are all kogut changed.*"))
+   and (.[1].text | startswith("*Daily digest: read-only, nothing was changed.*"))' \
+  "$(digest_full '{repos: [quiet, (quiet + {name: "s"})], auto_merged: [{repo: "r", pr: 1, outcome: "merged"}, {repo: "s", pr: 2, outcome: "refused", reason: "x"}]}')"
+check "a later merge settles an earlier refusal of the same PR" \
+  '.[0].text | contains("**Auto-merged:** [#1]") and (contains("refused") | not)' \
+  "$(digest_full '{repos: [quiet], auto_merged: [{repo: "r", pr: 1, outcome: "refused", reason: "x"}, {repo: "r", pr: 1, outcome: "merged"}]}')"
+check "the digest works without holds or records" '.[0].status == "green"' "$(digest_full '{repos: [quiet]}')"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

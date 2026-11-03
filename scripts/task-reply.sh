@@ -16,6 +16,7 @@ usage="usage: task-reply.sh <repo> <issue> [--dry-run]"
 [ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"
 repo="$1" number="$2" dry_run=false
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 [[ "$number" =~ ^[0-9]+$ ]] || die "an issue number is numeric: $number"
 if [ $# -eq 3 ]; then
   [ "$3" = --dry-run ] || die "$usage"
