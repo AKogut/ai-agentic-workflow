@@ -96,6 +96,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Runs locally in Claude Code, on demand | It runs on my Claude subscription and needs no API key or server. Approvals stay interactive. |
 | Secrets go by age, and only by age | GitHub gives a secret's name and date, never its value or expiry. A token that runs out shows up only when a release fails, as flakemetry's did at 98 days. kogut warns at 80 days, says the secret may have expired, and leaves rotating it to me. |
 | A failed read never closes a Node runtime issue | Without the release schedule or the repository's files, kogut cannot tell whether the finding is gone, so it flags nothing and keeps the issue. |
+| Logs are read for a name, never carried | A log is untrusted text, so `run-cause.sh` reduces it to a signature's name from a table of real failures, and nothing else reaches the snapshot, a report or an issue. A forged signature can cost one retry at most. |
 | A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
 | One sweep instead of webhooks | Six repositories don't justify a workflow in each. One pass reads them all. |
@@ -140,6 +141,8 @@ kogut() { (cd ~/GitHubPersonal/ai-agentic-workflow && claude "/kogut $*"); }
 scripts/collect.sh              repository state → .kogut/state.json + signals
 scripts/signals.jq              the policy: merge gate, CI health, hygiene
 scripts/failed-log.sh           the part of a failed run that explains it
+scripts/run-cause.sh            why a failed run failed: a kind and a signature's name, never its text
+scripts/causes.jq               the signatures, each taken from a real failure
 scripts/merge-dependabot.sh     the only way kogut merges: re-checks the gate per PR, never --admin
 scripts/dependabot-command.sh   @dependabot rebase or recreate, only where the rules name it
 scripts/run-workflow.sh         rerun, dispatch or enable a workflow as the rules name it, or run one on a PR's branch
@@ -196,6 +199,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Node runtime:** each repository's Node pin checked against Node's release schedule and its own `engines`
 - [x] **Alert dismissals:** one package's alerts dismissed with a recorded reason, only when I ask, and never a critical one
 - [x] **Old secrets:** an Actions secret old enough that it may have expired gets an issue, from its name and date alone
+- [x] **Causes of a red workflow:** known failures recognised in code, so infrastructure can be retried past the streak and a refused token never is
 - [x] **Pruning branches:** a branch goes only when its tip is exactly the head of a PR merged into the default branch, by `kogut-agent[bot]`, and only the ones I name in the approval
 
 ## License

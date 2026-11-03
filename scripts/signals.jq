@@ -615,21 +615,40 @@ def health($runs):
 # What kogut may run on GitHub to settle a red workflow on the default branch.
 # Nothing while a run is going. A failed run on the current head may have its
 # failed jobs retried once, while the failures are few: one that keeps coming
-# back is not a flake. A run on an older commit says nothing about the current
-# one, and GitHub retries nothing older than 30 days, so then a workflow that
-# can be started by hand runs again at the head, once per head.
-def ci_action($w; $runs; $head_sha; $app):
+# back is not a flake, unless causes.jq reads it as infrastructure, which goes
+# on being retried once per run up to policy.infra_retry_limit failures in a row.
+# A run on an older commit says nothing about the current one, and GitHub retries
+# nothing older than 30 days, so then a workflow that can be started by hand runs
+# again at the head, once per head.
+def ci_action($w; $runs; $head_sha; $app; $p):
   $w.health as $h | $h.latest as $run
   | [$runs[] | select(.head_sha == $head_sha and (.triggered_by // "" | is_app($app)))] as $mine
   | if $head_sha == null or $run == null or any($runs[]; .status != "completed") then null
     elif $run.head_sha == $head_sha and ($run.created_at | days_since) < 30 then
-      (if ($run.run_attempt // 1) < 2 and $h.streak < 3 then
-         {name: "rerun", reason: "failed on the current head and not retried yet"}
+      (if ($run.run_attempt // 1) >= 2 then null
+       elif $h.streak < 3 then {name: "rerun", reason: "failed on the current head and not retried yet"}
+       elif $w.cause.kind == "infra" and $h.streak < ($p.infra_retry_limit // 0) then
+         {name: "rerun", reason: "failed on infrastructure (\($w.cause.signature)), which a retry can clear"}
        else null end)
     elif $w.dispatchable and $mine == [] then
       {name: "dispatch", reason: (if $run.head_sha == $head_sha then "the last run is too old for GitHub to retry"
         else "the last run was on an older commit, so it says nothing about the current head" end)}
     else null end;
+
+# The rules above, and what holds them back. A refused token fails the same way
+# however often it runs. A workflow with a cron and cancel-in-progress kills a
+# run started by hand when its schedule fires on the same ref, and GitHub delays
+# crons by hours, so no clock says when that is. A day on the default branch does
+# not depend on the delay: a daily schedule has covered the head by then, and then
+# the run on the head decides. It goes by the head's date, so without one it waits.
+def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
+  ci_action($w; $runs; $head_sha; $app; $p) as $action
+  | if $w.cause.kind == "credentials" then
+      {action: null, held: "the run failed on a refused token (\($w.cause.signature)), and a retry cannot fix that: the owner has to replace it"}
+    elif $action.name == "dispatch" and $w.scheduled == true and $w.cancels == true
+      and ($head_at == null or ($head_at | days_since) < 1) then
+      {action: null, held: "its schedule can still cover this head and would cancel a run started by hand (cancel-in-progress)"}
+    else {action: $action, held: null} end;
 
 .policy as $p
 | .node_schedule as $node_schedule
@@ -655,9 +674,12 @@ def ci_action($w; $runs; $head_sha; $app):
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         branches: branch_report($r),
-        ci_failing: [$active[] | select(.health.streak > 0) | {
+        ci_failing: [$active[] | select(.health.streak > 0)
+          | ci_plan(.; $r.runs[.id | tostring] // []; $r.repo.head_sha; $r.repo.last_commit_at; $app; $p) as $plan | {
           id, name, path,
-          action: ci_action(.; $r.runs[.id | tostring] // []; $r.repo.head_sha; $app),
+          action: $plan.action,
+          held: $plan.held,
+          cause: (.cause // {kind: "unknown", signature: null}),
           failing_streak: .health.streak,
           of_runs: .health.total,
           last_success_at: .health.last_success_at,
