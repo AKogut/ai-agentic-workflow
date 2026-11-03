@@ -1,10 +1,10 @@
 # kogut
 
-A maintenance agent for the AKogut portfolio repositories, built on Claude Code. It runs locally and on demand as the `/kogut` skill. There is no server and no schedule. On GitHub it acts as its own GitHub App, `kogut-agent[bot]`, so the history keeps the agent's work apart from the owner's.
+A maintenance agent for the AKogut portfolio repositories, built on Claude Code. It runs locally and on demand as the `/kogut` skill. There is no server. The only thing on a schedule is the daily digest, which is read-only on GitHub and runs without the model. On GitHub it acts as its own GitHub App, `kogut-agent[bot]`, so the history keeps the agent's work apart from the owner's.
 
 Mandate: keep the watched repositories up to date and green (Dependabot PRs, CI health, repository hygiene). kogut does not build features.
 
-kogut runs on the owner's Claude subscription, through whatever account Claude Code is logged in with. Nothing in it may require an API key: no Agent SDK, no `ANTHROPIC_API_KEY`, no cloud runner. Every step stays inside a local Claude Code session.
+kogut runs on the owner's Claude subscription, through whatever account Claude Code is logged in with. Nothing in it may require an API key: no Agent SDK, no `ANTHROPIC_API_KEY`, no cloud runner. Every step that uses the model stays inside a local Claude Code session.
 
 ## Layout
 
@@ -14,7 +14,7 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 - `.claude/settings.json`: what the agent may run without asking, and what it may never run.
 - `.env`: one Discord webhook per repository (see `.env.example`). It is gitignored and the model may not read it; only `scripts/notify.sh` does.
 - `~/.config/kogut/kogut-agent.private-key.pem`: the App's private key, outside the repository. The model may not read it; only `kogut_app_token` in `scripts/lib.sh` does. `scripts/app.sh` registers the App and checks its installation.
-- `.kogut/`: run state, gitignored. `state.json` is the last snapshot, `outbox/` holds reports and issue diagnoses waiting to be sent, `sent/` holds the reports already posted and the text of opened fix PRs, and `fixes/` holds the worktrees of fixes in progress.
+- `.kogut/`: run state, gitignored. `state.json` is the last snapshot, `outbox/` holds reports and issue diagnoses waiting to be sent, `sent/` holds the reports already posted and the text of opened fix PRs, `fixes/` holds the worktrees of fixes in progress, `digest/` is the daily digest's own outbox, and `digest.log` is what its scheduled runs print.
 - `tests/`: policy tests for `signals.jq` against `tests/fixtures/state.json`, with the clock pinned by `KOGUT_NOW`.
 - `.githooks/pre-commit` and `.gitleaks.toml`: secret scanning. The custom rule catches Discord webhook URLs.
 - `.github/`: CI (lint, policy tests, secret scan), Dependabot for actions, templates and the social preview with its HTML source.
@@ -48,3 +48,4 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 11. Done: commands to Dependabot. `command` on each Dependabot PR in `signals.jq` names `rebase` (behind, in conflict for a day, or red on an older base) or `recreate` (Dependabot says someone else edited it), from Dependabot's and the owner's comments after the head commit only. `scripts/dependabot-command.sh` posts it under the owner's login, once per head commit, with the owner's approval. It cannot go out as the App, because Dependabot answers "Sorry, only users with push access can use that command" (owner agreed on 2026-11-03).
 12. Done: progress. `/kogut progress` runs `scripts/progress.sh` (two GitHub searches plus each repository's comments and alerts, read-only) and `scripts/progress.jq`, which does every count and renders the report. The model adds links, never figures.
 13. Done: workflow runs. `action` on each red or disabled workflow in `signals.jq` names `rerun` (failed on the current head, not retried, under 3 failures in a row), `dispatch` (last run on an older commit or too old to retry, and the workflow has `workflow_dispatch`; once per head) or `enable` (disabled for inactivity). `scripts/run-workflow.sh` acts as `kogut-agent[bot]` with a token narrowed to `actions: write`, with the owner's approval. The App needs the `actions: write` permission, which the owner grants in its settings. With `--pr <n>` the script runs a workflow on the branch of Dependabot's or kogut's PR, for a check the PR does not get, up to `policy.pr_run_limit` times per head. Such a run has the repository's secrets, so a Dependabot PR must be past its cooldown (`in_cooldown` in `signals.jq`), and a PR that changes `.github/workflows/` needs `--workflows`.
+14. Done: daily digest. `scripts/digest.sh` posts each repository's state to its channel: `collect.sh` reads with the owner's login, `digest.jq` renders with no judgement, and `notify.sh` delivers. No model, no App token and no write on GitHub, so it spends nothing from the subscription. `scripts/digest-schedule.sh` puts it on launchd at 09:00 local time. The owner reversed the earlier "no cron" decision for this on 2026-11-03; everything that acts stays in `/kogut`, behind approval.

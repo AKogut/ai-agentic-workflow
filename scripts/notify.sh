@@ -6,7 +6,8 @@
 #
 # Webhook URLs come from .env (DISCORD_WEBHOOK_<REPO_IN_UPPER_SNAKE_CASE>) and
 # are never printed. Mentions are switched off, so text quoted from a PR cannot
-# ping anyone. A sent report is moved to .kogut/sent/.
+# ping anyone. A sent report is moved to .kogut/sent/. digest.sh sets KOGUT_OUTBOX
+# to send from an outbox of its own.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -57,7 +58,7 @@ case "$status" in
   green) color=3066993 emoji="🟢" ;;
   *) die "status must be red, yellow or green: $status" ;;
 esac
-file="$KOGUT_ROOT/.kogut/outbox/$repo.md"
+file="${KOGUT_OUTBOX:-$KOGUT_ROOT/.kogut/outbox}/$repo.md"
 [ -s "$file" ] || die "nothing to send: $file is missing or empty"
 url="$(webhook_for "$repo")"
 
