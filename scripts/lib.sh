@@ -126,14 +126,20 @@ kogut_scan() {
 }
 
 # The title line of a fix's text file: the PR title, or a follow-up's commit
-# message. kogut maintains and does not build features, so the title must use
-# one of the maintenance types of Conventional Commits. The rest of the file,
+# message. kogut does not build features unless the owner approved one, so the
+# title must use one of the maintenance types of Conventional Commits. The rest of the file,
 # after a blank second line, is the PR body or the follow-up's comment.
+# Only a feature the owner approved passes "feature" as $2, which also allows feat.
 kogut_fix_title() {
-  local text="$1" title title_re='^(fix|ci|build|chore|docs|test)(\([a-z0-9._/-]+\))?: .+$'
+  local text="$1" title types='fix|ci|build|chore|docs|test' what="maintenance"
+  if [ "${2:-}" = feature ]; then
+    types="feat|$types"
+    what="feature"
+  fi
+  local title_re="^($types)(\\([a-z0-9._/-]+\\))?: .+\$"
   [ -s "$text" ] || die "the text is missing: $text"
   title="$(head -n 1 "$text")"
-  [[ "$title" =~ $title_re ]] || die "the title must be a maintenance Conventional Commit (fix, ci, build, chore, docs, test): $title"
+  [[ "$title" =~ $title_re ]] || die "the title must be a $what Conventional Commit (${types//|/, }): $title"
   [ "${#title}" -le 72 ] || die "the title is longer than 72 characters"
   [ -z "$(sed -n 2p "$text")" ] || die "the second line of $text must be blank"
   [ -n "$(tail -n +3 "$text" | tr -d '[:space:]')" ] || die "the body of $text is empty"
@@ -220,6 +226,64 @@ kogut_task_check() {
     --jq '[.[] | select(.event == "labeled" and .label.name == "kogut-task")] | sort_by(.created_at) | last | .actor.login')"
   [ "$actor" = "$(kogut_owner)" ] || die "#$number was labelled kogut-task by $actor, not by the owner"
   if jq -e '(.body // "") | contains("<!-- kogut-finding:")' <<<"$issue" >/dev/null; then echo finding; else echo task; fi
+}
+
+# Whether a repository takes feature requests at all (policy.feature.repos).
+kogut_feature_enabled() {
+  jq -e --arg r "$1" 'any(.policy.feature.repos[]?; . == $r)' "$KOGUT_CONFIG" >/dev/null
+}
+
+# Where feature request $3 in $2 ($1 is owner/name) stands, on GitHub as it is
+# now, as feature.jq decides: the same rule the digest shows. Fails unless it is
+# an open issue. An approval is only as good as this answer, so nothing is cached.
+kogut_feature_state() {
+  local full="$1" repo="$2" number="$3" issue events comments prs enabled=false
+  issue="$(gh api "repos/$full/issues/$number")"
+  [ "$(jq -r '.state' <<<"$issue")" = open ] || die "#$number is not open"
+  jq -e '.pull_request == null' <<<"$issue" >/dev/null || die "#$number is a PR, not an issue"
+  events="$(gh api --paginate "repos/$full/issues/$number/events?per_page=100" --jq '.[]' | jq -s .)"
+  comments="$(gh api --paginate "repos/$full/issues/$number/comments?per_page=100" \
+    --jq '.[] | {author: {login: .user.login}, createdAt: .created_at, body}' | jq -s .)"
+  # shellcheck disable=SC2016 # these are jq's variables
+  prs="$(gh pr list -R "$full" --state open --author "app/$(kogut_app_slug)" --limit 50 --json number,body |
+    jq -c --arg n "$number" '[.[] | select((.body // "") | test("(?i)\\b(closes|fixes|resolves|refs) #\($n)\\b")) | .number]')"
+  if kogut_feature_enabled "$repo"; then enabled=true; fi
+  # shellcheck disable=SC2016 # these are jq's variables
+  jq -n --argjson issue "$issue" --argjson events "$events" --argjson comments "$comments" '{
+      labels: $issue.labels,
+      labeled: [$events[] | select(.event == "labeled" and .label.name == "kogut-feature") | {actor: .actor.login, at: .created_at}],
+      approvals: [$events[] | select(.event == "labeled" and .label.name == "kogut-plan-approved") | {actor: .actor.login, at: .created_at}],
+      comments: $comments}' |
+    jq -r --arg owner "$(kogut_owner)" --arg app "$(kogut_app_slug)" --argjson enabled "$enabled" --argjson prs "$prs" \
+      -f "$KOGUT_ROOT/scripts/feature-state.jq"
+}
+
+# A feature stays small enough to review. Counts the staged change in worktree $1,
+# plus for a follow-up what PR $2 (gh's JSON with files) already holds, leaving
+# out lockfiles, which nobody reads. Dies past policy.feature.max_files or max_lines.
+kogut_feature_size() {
+  local worktree="$1" pr="${2:-}" stat lines files max_lines max_files
+  [ -n "$pr" ] || pr='{}'
+  stat="$(git -C "$worktree" diff --cached --numstat --no-renames HEAD)"
+  # shellcheck disable=SC2016 # these are jq's variables
+  read -r lines files <<<"$(jq -Rrs --argjson pr "$pr" '
+    def locked: test("(^|/)(package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock)$");
+    def count: if . == "-" then 0 else tonumber end;
+    [split("\n")[] | select(. != "") | split("\t") | {lines: ((.[0] | count) + (.[1] | count)), path: .[2]} | select(.path | locked | not)] as $staged
+    | [($pr.files // [])[] | select(.path | locked | not) | {lines: (.additions + .deletions), path}] as $held
+    | "\([$staged[].lines, $held[].lines] | add // 0) \([$staged[].path, $held[].path] | unique | length)"' <<<"$stat")"
+  max_lines="$(jq -r '.policy.feature.max_lines // 0' "$KOGUT_CONFIG")"
+  max_files="$(jq -r '.policy.feature.max_files // 0' "$KOGUT_CONFIG")"
+  [ "$lines" -le "$max_lines" ] || die "this feature changes $lines lines, and the limit is $max_lines: split it"
+  [ "$files" -le "$max_files" ] || die "this feature changes $files files, and the limit is $max_files: split it"
+}
+
+# The fixes in progress in a repository, one slug per line: a worktree exists from
+# fix-start.sh until the PR opens or the fix is discarded.
+kogut_fix_worktrees() {
+  local base="$KOGUT_ROOT/.kogut/fixes/$1"
+  [ -d "$base" ] || return 0
+  find "$base" -mindepth 1 -maxdepth 1 -type d -exec basename {} \;
 }
 
 # Creates a label in a repository unless it is there already. Needs GH_TOKEN

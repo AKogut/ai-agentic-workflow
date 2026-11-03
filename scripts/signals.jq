@@ -1,3 +1,5 @@
+include "feature" {search: "./"};
+
 # Turns the raw snapshot (.kogut/state.json) into the signals digest: per
 # repository, only what needs attention. Every rule that needs no judgement
 # lives here rather than in the prompt, so no PR body can argue with it.
@@ -351,6 +353,9 @@ def kogut_pr($owner; $app; $p):
     | map(select(.at > $answered)) | sort_by(.at)
   | . as $feedback
   | ([$mine - 1, 0] | max) as $attempts
+  # A feature's PR has a limit of its own, because CI is the only place its code runs.
+  | ($pr.body // "" | test("<!-- kogut-feature: [0-9]+ -->")) as $feature
+  | (if $feature then $p.feature.followup_limit // $p.followup_limit else $p.followup_limit end) as $limit
   | {
       number: $pr.number, title: $pr.title, url: $pr.url,
       branch: $pr.headRefName,
@@ -359,9 +364,10 @@ def kogut_pr($owner; $app; $p):
       failing: failing($c),
       mergeable: $pr.mergeable,
       attempts: $attempts,
+      feature: $feature,
       feedback: $feedback,
       needs: (
-        if ($state == "red" or $feedback != []) and $attempts >= $p.followup_limit then "owner"
+        if ($state == "red" or $feedback != []) and $attempts >= $limit then "owner"
         elif $feedback != [] then "answer"
         elif $state == "red" then "fix-ci"
         elif $state == "green" then "review"
@@ -401,6 +407,16 @@ def task($owner; $app; $kogut_prs; $auto):
 # alerts issue while no Dependabot PR fixes a critical or high alert, and an
 # issue it opened for a major, which means a migration. Only issues the App
 # filed itself count, so a stranger cannot forge one by copying the marker.
+# The feature requests of one repository, as feature.jq decides. Only an open
+# issue with the owner's label gets this far; the label is checked again on GitHub
+# before anything is posted or opened.
+def features($r; $owner; $app; $p):
+  ($r.name | IN($p.feature.repos[]?)) as $enabled
+  | [$r.prs[] | select(.author.login == "app/\($app)")] as $kprs
+  | [($r.features // [])[] | . as $t
+      | [$kprs[] | select((.body // "") | test("(?i)\\b(closes|fixes|resolves|refs) #\($t.number)\\b")) | .number] as $prs
+      | {number, title, url, prs: $prs, needs: feature_needs($owner; $app; $enabled; $prs)}];
+
 def finding_key: [(.body // "") | capture("<!-- kogut-finding: (?<k>.+?) -->").k][0];
 
 def tasks($r; $owner; $app):
@@ -794,7 +810,7 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
         ]
       }
     | . + {findings: findings}
-    | . + {tasks: tasks($r; $owner; $app)}
+    | . + {tasks: tasks($r; $owner; $app), features: features($r; $owner; $app; $p)}
     | [.ci_failing[] | select(.path | startswith("dynamic/dependabot/") | not) | .name] as $red
     | .dependabot_prs |= map(. + {auto_merge: auto_merge_rule($p; $red)})
   end]

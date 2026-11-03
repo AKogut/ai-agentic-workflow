@@ -230,6 +230,23 @@ collect_repo() {
     echo '{"status": "unavailable", "items": []}' >"$dir/branches.json"
   fi
 
+  # Features: open issues labelled kogut-feature, in a repository that takes them,
+  # with who added that label and who added kogut-plan-approved. feature.jq decides.
+  echo '[]' >"$dir/features.json"
+  if kogut_feature_enabled "$repo"; then
+    gh issue list -R "$full" --state open --label kogut-feature --limit 20 \
+      --json number,title,url,comments,labels >"$dir/features.json"
+    for n in $(jq -r '.[].number' "$dir/features.json"); do
+      gh api --paginate "repos/$full/issues/$n/events?per_page=100" --jq '.[] | select(.event == "labeled")
+          | {name: .label.name, actor: .actor.login, at: .created_at}' | jq -s . >"$dir/feature-events.json"
+      # shellcheck disable=SC2016 # these are jq's variables
+      jq --argjson n "$n" --slurpfile e "$dir/feature-events.json" 'map(if .number == $n then . + {
+          labeled: [$e[0][] | select(.name == "kogut-feature") | {actor, at}],
+          approvals: [$e[0][] | select(.name == "kogut-plan-approved") | {actor, at}]} else . end)' \
+        "$dir/features.json" >"$dir/features.tmp" && mv "$dir/features.tmp" "$dir/features.json"
+    done
+  fi
+
   # Tasks: open issues labelled kogut-task, with who added the label (only the
   # owner can hand kogut work) and their comments, which show whether kogut
   # has answered.
@@ -303,6 +320,7 @@ collect_repo() {
     --slurpfile branches "$dir/branches.json" \
     --slurpfile secrets "$dir/secrets.json" \
     --slurpfile tasks "$dir/tasks.json" \
+    --slurpfile features "$dir/features.json" \
     --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
@@ -325,6 +343,7 @@ collect_repo() {
       branches: $branches[0],
       secrets: $secrets[0],
       tasks: $tasks[0],
+      features: $features[0],
       kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,
       local_clone: {path: $path, present: $local_clone},

@@ -16,7 +16,14 @@
     "secret_warn_days": 80,
     "secret_ignore": [],
     "infra_retry_limit": 6,
-    "auto_merge": { "enabled": true, "limit_per_repo": 5 }
+    "auto_merge": { "enabled": true, "limit_per_repo": 5 },
+    "parallel_agents": 3,
+    "feature": {
+      "repos": ["mobile-task-manager-automation"],
+      "max_files": 30,
+      "max_lines": 1500,
+      "followup_limit": 8
+    }
   },
   "repos": [
     { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },
