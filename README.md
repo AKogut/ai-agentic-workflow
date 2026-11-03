@@ -94,6 +94,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Decision | Why |
 |---|---|
 | Runs locally in Claude Code, on demand | It runs on my Claude subscription and needs no API key or server. Approvals stay interactive. |
+| A failed read never closes a Node runtime issue | Without the release schedule or the repository's files, kogut cannot tell whether the finding is gone, so it flags nothing and keeps the issue. |
 | A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
 | One sweep instead of webhooks | Six repositories don't justify a workflow in each. One pass reads them all. |
@@ -188,6 +189,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Progress:** `/kogut progress`, what kogut did over a window next to what I did
 - [x] **Workflow runs:** a retry, a run at the current head, a workflow turned back on, or a run on a PR's branch, by `kogut-agent[bot]`
 - [x] **Daily digest:** each repository's state in its channel every morning, without the model
+- [x] **Node runtime:** each repository's Node pin checked against Node's release schedule and its own `engines`
 
 ## License
 

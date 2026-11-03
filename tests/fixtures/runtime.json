@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-11-03T12:00:00Z",
+  "owner": "example",
+  "app": "kogut-agent",
+  "policy": { "cooldown_days": 3, "cooldown_skip_severity": "high", "stale_pr_days": 7, "inactivity_warn_days": 45, "run_window": 30, "followup_limit": 3 },
+  "node_schedule": {
+    "v0.12": { "start": "2015-02-06", "maintenance": "2016-04-01", "end": "2016-12-31" },
+    "v20": { "start": "2023-04-18", "lts": "2023-10-24", "maintenance": "2024-10-22", "end": "2026-04-30", "codename": "Iron" },
+    "v22": { "start": "2024-04-24", "lts": "2024-10-29", "maintenance": "2025-10-21", "end": "2027-04-30", "codename": "Jod" },
+    "v24": { "start": "2025-05-06", "lts": "2025-10-28", "maintenance": "2026-10-20", "end": "2028-04-30", "codename": "Krypton" },
+    "v25": { "start": "2025-10-15", "maintenance": "2026-04-01", "end": "2026-06-01" },
+    "v26": { "start": "2026-05-05", "lts": "2026-10-28", "maintenance": "2027-10-20", "end": "2029-04-30", "codename": "Lithium" },
+    "v27": { "alpha": "2026-10-28", "start": "2027-04-22", "lts": "2027-10-20", "end": "2030-04-30", "codename": "" }
+  },
+  "repos": [
+    {
+      "name": "quiet",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-11-01T00:00:00Z",
+        "html_url": "https://example.com/quiet",
+        "allow_auto_merge": true,
+        "delete_branch_on_merge": true,
+        "last_commit_at": "2026-11-01T00:00:00Z",
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "prs": [],
+      "workflows": [],
+      "runs": {},
+      "required_checks": ["ci"],
+      "alerts": { "status": "ok", "items": [] },
+      "tasks": [],
+      "kogut_issues": [],
+      "dependabot_config": true,
+      "local_clone": { "path": "/nowhere", "present": true }
+    }
+  ]
+}

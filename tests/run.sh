@@ -317,6 +317,117 @@ report="$(jq -r --arg format markdown -f scripts/progress.jq tests/fixtures/prog
 p_repo='def p($n): .repos[] | select(.name == $n);'
 
 echo
+echo "the Node runtime"
+rt_fixture=tests/fixtures/runtime.json
+rt_clock=2026-11-03T12:00:00Z
+# A one-repository snapshot with the given pin and engines ("" for none).
+rt_state() {
+  jq -c --arg pin "$1" --arg engines "${2:-}" '.repos[0].runtime = {file: ".nvmrc",
+      pin: (if $pin == "" then null else $pin end),
+      engines: (if $engines == "" then null else $engines end), read_error: false}' "$rt_fixture"
+}
+rt_signals() { KOGUT_NOW="${1:-$rt_clock}" jq -c -f scripts/signals.jq; }
+rt() { rt_state "$1" "${2:-}" | rt_signals "${3:-}"; }
+# One repository per [pin, engines] row, to check a whole table at once.
+rt_table() {
+  jq -c --argjson rows "$1" '.repos[0] as $r
+    | .repos = [$rows[] | $r + {runtime: {file: ".nvmrc", pin: .[0], engines: .[1], read_error: false}}]' "$rt_fixture" | rt_signals
+}
+no_runtime_finding='.repos[0] | all(.findings[]; .key != "runtime:node")'
+rt_eol="$(rt 20 '>=22.18')"
+rt_maintenance="$(rt 24)"
+rt_outside="$(rt 22.10.0 '>=22.18')"
+rt_no_schedule="$(rt_state 20 '>=22.18' | jq -c '.node_schedule = null' | rt_signals)"
+rt_read_error="$(rt_state 20 '>=22.18' | jq -c '.repos[0].runtime.read_error = true' | rt_signals)"
+
+check "a line past its end of life is a finding, and names the Active LTS" \
+  '.repos[0] | (.runtime | .line == 20 and .phase == "eol" and .since == "2026-04-30" and .active_lts == 26 and .flagged)
+   and (.findings[] | select(.key == "runtime:node")
+     | .auto and .kind == "runtime" and .slug == "runtime-node" and .title == "Runtime: Node 20 is past its end of life")' "$rt_eol"
+check "a line past its end of life is a finding even when it fits engines" \
+  '.repos[0] | (.runtime | .phase == "eol" and (.conflict | not) and .flagged) and any(.findings[]; .key == "runtime:node")' "$(rt 20 '>=18')"
+check "a line on maintenance is said, but is not a finding" \
+  '.repos[0].runtime | .phase == "maintenance" and .since == "2026-10-20" and .active_lts == 26 and (.flagged | not)' "$rt_maintenance"
+check "a line on maintenance opens no issue" "$no_runtime_finding" "$rt_maintenance"
+check "the Active LTS line is not a finding" \
+  '(.repos[0].runtime | .phase == "active" and .since == null and (.flagged | not))' "$(rt 26)"
+check "a Current line is not a finding, and the clock decides the phase" \
+  '(.repos[0].runtime | .phase == "current" and .active_lts == 24 and (.flagged | not))' "$(rt 26 '' 2026-08-01T00:00:00Z)"
+check "there may be no Active LTS line for a few days" \
+  '.repos[0].runtime.active_lts == null' "$(rt 24 '' 2026-10-25T00:00:00Z)"
+check "a line not in the schedule or not started is unknown, and not a finding" \
+  'all(.repos[]; .runtime.phase == "unknown" and (.runtime.flagged | not))' "$(rt_table '[["99",""],["27",""]]')"
+check "a pin may be a full version, with a v, or an LTS codename" \
+  '[.repos[].runtime.line] == [20, 20, 20, 20]' "$(rt_table '[["20",""],["20.11.1",""],["v20.11",""],["lts/iron",""]]')"
+check "a pin that names no fixed line is not judged" \
+  'all(.repos[]; .runtime.line == null and .runtime.phase == "unknown" and (.runtime.flagged | not))' \
+  "$(rt_table '[["lts/*",""],["node",""],["stable",""],["lts/nope",""]]')"
+check "a pin outside engines is a finding, even on a supported line" \
+  '.repos[0] | (.runtime | .phase == "maintenance" and .conflict and .flagged)
+   and (.findings[] | select(.key == "runtime:node") | .title == "Runtime: Node 22 in .nvmrc is outside engines" and .facts.conflict)' "$rt_outside"
+check "a pin that fits engines is not a conflict: a bare major is the whole line" \
+  'all(.repos[]; .runtime.conflict == false and .runtime.engines_readable)' \
+  "$(rt_table '[["22",">=22.18"],["22","^22.22.1 || >=24"],["24","^22.22.1 || >=24"],["22.22.1","^22.22.1 || >=24"],
+     ["26",">= 24"],["22.18.5","~22.18.0"],["22","~22"],["22.5.0","<=22"],["22.1.5","22.1"],["24","24.x"],["26","*"],
+     ["22.1.0","=22.1.0"],["22",">=22 <24"],["22",">22.18.0 <22.19"],["lts/jod",">=22"],["v22.18.0",">=22.18"],
+     ["26",">=22.18 || <20"],["22.18.0","<=22.18.0"]]')"
+check "a pin outside engines is a conflict, for each kind of comparator" \
+  'all(.repos[]; .runtime.conflict == true and .runtime.engines_readable)' \
+  "$(rt_table '[["20",">=22.18"],["23","^22.22.1 || >=24"],["22.1.0","^22.22.1 || >=24"],["22.19.0","~22.18.0"],["26","^24"],
+     ["22.0.0","<22"],["22.5.0",">22"],["22.1.9",">22.1"],["22.18.0",">22.18.0"],["24",">=22 <24"],["26","24.x"],
+     ["22.2.0","22.1"],["lts/iron",">=22"],["23","<=22"],["24.0.0","~22"],["22.19.0","<=22.18.0"]]')"
+check "a range kogut cannot read is never a conflict" \
+  'all(.repos[]; .runtime.conflict == false and (.runtime.engines_readable | not) and (.runtime.flagged | not))' \
+  "$(rt_table '[["26","22 - 24"],["26",">=22 garbage"],["26","^0.12"],["26",""],["26",">=22 ||"],["26","22.0.0-rc.1"],["26","latest"]]')"
+check "engines without a pin, or a pin without engines, is no conflict" \
+  'all(.repos[]; .runtime.conflict == false and (.runtime.flagged | not))' "$(rt_table '[[null,">=22.18"],["26",null]]')"
+check "no pin means no finding" \
+  '.repos[0] | (.runtime | .pin == null and .judged and (.flagged | not)) and all(.findings[]; .key != "runtime:node")' "$(rt '' '>=22.18')"
+check "without the schedule the phase is unknown and nothing is flagged" \
+  '.repos[0] | (.runtime | .phase == "unknown" and .active_lts == null and (.judged | not) and (.flagged | not))
+   and all(.findings[]; .key != "runtime:node")' "$rt_no_schedule"
+check "a file that could not be read flags nothing" \
+  '.repos[0] | (.runtime | (.judged | not) and (.flagged | not)) and all(.findings[]; .key != "runtime:node")' "$rt_read_error"
+check "a snapshot from before the runtime was collected flags nothing" \
+  '.repos[0].runtime | (.judged | not) and (.flagged | not)' "$(rt_signals <"$rt_fixture")"
+
+rt_plan() {
+  jq -c -n -L scripts --argjson d "$(jq -c '.repos[0]' <<<"$1")" --argjson issues "$2" \
+    'include "issues"; plan($d; $issues; {}; "2026-11-03"; "https://example.com/kogut")'
+}
+rt_issue='[{"number": 5, "title": "Runtime: Node 20 is past its end of life", "url": "u5", "key": "runtime:node", "body": "old"}]'
+check "the issue's facts name the pin, the line, the Active LTS and engines" \
+  '.[0] | .action == "open" and .key == "runtime:node" and (.body
+     | contains("- Pin: `20` in `.nvmrc`\n- Node 20: past its end of life since 2026-04-30\n- Active LTS: Node 26\n- `engines.node`: `>=22.18`, which the pin does not satisfy")
+       and contains("<!-- kogut-finding: runtime:node -->"))' "$(rt_plan "$rt_eol" '[]')"
+check "the facts of a pin outside engines on maintenance say so" \
+  '.[0].body | contains("- Pin: `22.10.0` in `.nvmrc`\n- Node 22: on maintenance since 2025-10-21")' "$(rt_plan "$rt_outside" '[]')"
+check "once the pin is fine, the issue closes and says why" \
+  '.[0] | .action == "close" and .number == 5 and (.comment | contains("the Node pin is no longer past its end of life or outside `engines`"))' \
+  "$(rt_plan "$(rt 26 '>=22.18')" "$rt_issue")"
+check "once the pin is gone, the issue closes" \
+  '.[0].action == "close"' "$(rt_plan "$(rt '')" "$rt_issue")"
+check "an issue stays open when the schedule could not be read" \
+  '.[0] | .action == "keep" and .number == 5' "$(rt_plan "$rt_no_schedule" "$rt_issue")"
+check "an issue stays open when a file could not be read" \
+  '.[0] | .action == "keep" and .number == 5' "$(rt_plan "$rt_read_error" "$rt_issue")"
+
+rt_digest() { jq -c -f scripts/digest.jq <<<"$1"; }
+check "the digest mentions a line on maintenance and stays green" \
+  '.[0] | .status == "green" and (.text | contains("**Node:** `24` in `.nvmrc`, on maintenance. Active LTS: 26.") and contains("Nothing needs you."))' \
+  "$(rt_digest "$rt_maintenance")"
+check "a line past its end of life makes the digest yellow" \
+  '.[0] | .status == "yellow" and (.text | contains("**Node:** `20` in `.nvmrc`, past its end of life, outside `engines` `>=22.18`. Active LTS: 26.") and (contains("Nothing needs you.") | not))' \
+  "$(rt_digest "$rt_eol")"
+check "a pin outside engines makes the digest yellow" \
+  '.[0] | .status == "yellow" and (.text | contains("on maintenance, outside `engines` `>=22.18`"))' "$(rt_digest "$rt_outside")"
+check "a supported line, or a pin kogut could not judge, stays out of the digest" \
+  'all(.[]; .status == "green" and (.text | contains("**Node") | not))' \
+  "$(rt_digest "$(rt_table '[["26",null],[null,">=22.18"]]')")"
+check "without the schedule the digest says nothing about the pin" \
+  '.[0] | .status == "green" and (.text | contains("**Node") | not)' "$(rt_digest "$rt_no_schedule")"
+
+echo
 echo "progress report"
 check "kogut's merges are the PRs the App merged" \
   "$p_repo"' p("alpha") | .kogut.merged == 1' "$progress"

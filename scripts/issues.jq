@@ -19,6 +19,16 @@ def facts:
         + " · [worst alert](\(.url))"] | join("\n"))
   elif .kind == "hygiene" then [.facts.issues[] | "- \(.)"] | join("\n")
   elif .kind == "major" then [.facts.prs[] | "- #\(.number): \(.versions | join(", "))"] | join("\n")
+  elif .kind == "runtime" then .facts as $f
+    | "- Pin: `\($f.pin)` in `\($f.file)`\n"
+    + "- Node \($f.line): " + (
+        if $f.phase == "eol" then "past its end of life since \($f.since)"
+        elif $f.phase == "maintenance" then "on maintenance since \($f.since)"
+        elif $f.phase == "active" then "Active LTS"
+        elif $f.phase == "current" then "Current"
+        else "not in the release schedule" end)
+    + (if $f.active_lts then "\n- Active LTS: Node \($f.active_lts)" else "" end)
+    + (if $f.engines then "\n- `engines.node`: `\($f.engines)`" + (if $f.conflict then ", which the pin does not satisfy" else "" end) else "" end)
   else "" end;
 
 # The issue body: the model's diagnosis, the facts, a footer, and the key that
@@ -45,6 +55,7 @@ def closing($today):
      elif $kind == "alerts" then "no critical or high Dependabot alerts are open."
      elif $kind == "hygiene" then "no hygiene gaps are left."
      elif $kind == "major" then "no open Dependabot PR takes `\($what)` to a new major."
+     elif $kind == "runtime" then "the Node pin is no longer past its end of life or outside `engines`."
      else "the finding is gone." end)
   + " Closing.";
 
@@ -55,7 +66,8 @@ def closing($today):
 #   update  the issue would read differently: new facts, title or diagnosis
 #   keep    the issue already reads as it should
 #   skip    a major the model wrote nothing about
-#   close   an issue whose finding is gone
+#   close   an issue whose finding is gone. A runtime finding kogut could not
+#           judge this run is not gone, so its issue is kept.
 def plan($d; $issues; $texts; $today; $home):
   [ ($d.findings[] as $f
       | ([$issues[] | select(.key == $f.key)][0]) as $i
@@ -70,5 +82,7 @@ def plan($d; $issues; $texts; $today; $home):
         else {action: "skip", title: $f.title, key: $f.key, slug: $f.slug} end),
     ($issues[] | select(.key != null) | . as $i
       | select([$d.findings[].key] | index($i.key) | not)
-      | {action: "close", number, title, url, comment: closing($today)})
+      | if .key == "runtime:node" and ($d.runtime.judged | not)
+        then {action: "keep", number, title, url}
+        else {action: "close", number, title, url, comment: closing($today)} end)
   ];
