@@ -74,13 +74,16 @@ search() {
   gh api graphql --paginate -f q="$1" -f query="$search_query" --jq '.data.search.nodes[]' | jq -s .
 }
 
-# Per repository: kogut's comments in the window, and its Dependabot alerts.
-# The comments endpoint filters by last update, so progress.jq checks when each
-# was written.
+# Per repository: kogut's comments in the window, the commands to Dependabot
+# under the owner's login, and the Dependabot alerts. A command has to be the
+# whole comment, as it does for Dependabot. The comments endpoint filters by last
+# update, so progress.jq checks when each was written.
 figures() {
   local full="$owner/$1" status=ok
   api_or '' --paginate "repos/$full/issues/comments?since=${since}T00:00:00Z&per_page=100" \
-    --jq ".[] | select(.user.login == \"${slug}[bot]\") | {created_at, url: .html_url, body: (.body | split(\"\\n\")[0] | .[0:120])}" |
+    --jq ".[] | select(.user.login == \"${slug}[bot]\"
+           or (.user.login == \"$owner\" and (.body | test(\"^@dependabot (rebase|recreate)\\\\s*\$\"))))
+         | {by: .user.login, created_at, url: .html_url, body: (.body | split(\"\\n\")[0] | .[0:120])}" |
     jq -s . >"$tmp/$1.comments.json"
   local state
   for state in fixed open; do
