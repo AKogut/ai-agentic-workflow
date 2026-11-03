@@ -28,6 +28,28 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Why the latest run of a red workflow failed, as {kind, signature}. A finished
+# run's text never changes, so the answer is kept per run attempt and per version
+# of the table: a merge collects once per PR and must not download logs each time.
+causes_cache="$KOGUT_ROOT/.kogut/causes"
+mkdir -p "$causes_cache"
+find "$causes_cache" -type f -mtime +30 -delete 2>/dev/null || true
+causes_table="$(cksum <"$KOGUT_ROOT/scripts/causes.jq" | awk '{ print $1 }')"
+run_cause() {
+  local cached="$causes_cache/$1-$2-$3-$causes_table.json" out="" status=0
+  if [ -s "$cached" ]; then
+    cat "$cached"
+    return
+  fi
+  out="$("$KOGUT_ROOT/scripts/run-cause.sh" "$1" "$2" 2>/dev/null </dev/null)" || status=$?
+  if ! jq -e 'type == "object" and has("kind")' <<<"$out" >/dev/null 2>&1; then
+    echo '{"kind": "unknown", "signature": null}'
+    return
+  fi
+  [ "$status" -ne 0 ] || printf '%s\n' "$out" >"$cached"
+  printf '%s\n' "$out"
+}
+
 # Prints a file from a repository's default branch. Returns 1 when the file does
 # not exist and 2 when it could not be read, so a failed request cannot pass for
 # a missing file.
@@ -93,25 +115,40 @@ collect_repo() {
     --jq '[.workflows[] | {id, name, path, state}]' >"$dir/workflows.json"
 
   # Runs on the default branch only: a red PR is the PR's business, a red main
-  # is the repository's. Each workflow also records whether it can be started
-  # by hand, read from its file on the default branch.
+  # is the repository's. Each workflow also records, from its file on the default
+  # branch, whether it can be started by hand and whether its schedule can cancel
+  # a run started by hand; and, when it is red, why its latest run failed.
   mkdir -p "$dir/dispatch"
-  local path
+  local path text dispatchable scheduled cancels latest cause
   while read -r id path; do
     gh api "repos/$full/actions/workflows/$id/runs?branch=$branch&per_page=$window&exclude_pull_requests=true" \
       --jq "{\"$id\": [.workflow_runs[] | {id, event, status, conclusion, created_at, run_attempt, head_sha,
               triggered_by: .triggering_actor.login, url: .html_url}]}" \
       </dev/null >"$dir/runs/$id.json"
-    if gh api -H 'Accept: application/vnd.github.raw' "repos/$full/contents/$path?ref=$branch" </dev/null 2>/dev/null |
-      grep -Eq '^[^#]*workflow_dispatch'; then
-      echo "{\"$id\": true}" >"$dir/dispatch/$id.json"
-    else
-      echo "{\"$id\": false}" >"$dir/dispatch/$id.json"
-    fi
+    text="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$full/contents/$path?ref=$branch" </dev/null 2>/dev/null)" || text=""
+    dispatchable=false scheduled=false cancels=false
+    if grep -Eq '^[^#]*workflow_dispatch' <<<"$text"; then dispatchable=true; fi
+    if grep -Eq '^[^#]*cron:' <<<"$text"; then scheduled=true; fi
+    # An expression can turn it on as well, so only a plain false is off.
+    if grep -E '^[^#]*cancel-in-progress:' <<<"$text" | grep -Evq ':[[:space:]]*false'; then cancels=true; fi
+    # The same "latest" that health in signals.jq judges. Dependabot's own runs
+    # are not the repository's CI, so their logs are not read.
+    latest="$(jq -r '.[] | map(select(.status == "completed"
+        and (.conclusion | IN("success", "failure", "timed_out", "startup_failure")))) | .[0]
+      | select(. != null and .conclusion != "success") | "\(.id) \(.run_attempt // 1)"' "$dir/runs/$id.json")"
+    cause=null
+    case "$path" in
+      dynamic/*) ;;
+      *) if [ -n "$latest" ]; then cause="$(run_cause "$repo" "${latest% *}" "${latest#* }")"; fi ;;
+    esac
+    jq -cn --arg id "$id" --argjson dispatchable "$dispatchable" --argjson scheduled "$scheduled" \
+      --argjson cancels "$cancels" --argjson cause "$cause" \
+      '{($id): {dispatchable: $dispatchable, scheduled: $scheduled, cancels: $cancels, cause: $cause}}' \
+      >"$dir/dispatch/$id.json"
   done < <(jq -r '.[] | select(.state == "active") | "\(.id) \(.path)"' "$dir/workflows.json")
   find "$dir/runs" -name '*.json' -exec cat {} + | jq -s 'add // {}' >"$dir/runs.json"
   find "$dir/dispatch" -name '*.json' -exec cat {} + | jq -s 'add // {}' >"$dir/dispatch.json"
-  jq --slurpfile d "$dir/dispatch.json" 'map(. + {dispatchable: ($d[0][.id | tostring] // false)})' \
+  jq --slurpfile d "$dir/dispatch.json" 'map(. + ($d[0][.id | tostring] // {dispatchable: false}))' \
     "$dir/workflows.json" >"$dir/workflows.tmp" && mv "$dir/workflows.tmp" "$dir/workflows.json"
 
   # Required checks come from classic branch protection and from rulesets; the

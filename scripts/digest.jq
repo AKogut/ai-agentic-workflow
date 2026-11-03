@@ -49,7 +49,8 @@ def report:
         line("Tasks waiting for kogut"; $tasks | links),
         line("Tasks waiting for you"; $answered | links),
         list("Other PRs gone stale"; $stale | map("\(link)\(if .draft then " (draft)" else "" end), \(.age_days | floor) days old")),
-        list("CI red"; $red | map("[\(.name)](\(.latest_run.url)), \(.failing_streak) in a row")),
+        list("CI red"; $red | map("[\(.name)](\(.latest_run.url)), \(.failing_streak) in a row"
+          + (if (.cause.signature // null) == null then "" else ": \(.cause.kind) (\(.cause.signature))" end))),
         line("Turned off by GitHub"; $disabled | map(.name) | join(", ")),
         line("Alerts"; if $alerts == "" then "" else "[\($alerts)](\(.url)/security/dependabot)" end),
         line("Hygiene"; .hygiene_issues | join("; ")),

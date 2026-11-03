@@ -246,7 +246,8 @@ check "the same update in another directory does not cover an alert" \
 echo
 echo "workflows on the default branch"
 check "consecutive failures form a streak, with the last success" \
-  'repo("alpha") | .ci_failing == [{id: 1, name: "CI", path: ".github/workflows/ci.yml", action: null, failing_streak: 2, of_runs: 4,
+  'repo("alpha") | .ci_failing == [{id: 1, name: "CI", path: ".github/workflows/ci.yml", action: null, held: null,
+     cause: {kind: "unknown", signature: null}, failing_streak: 2, of_runs: 4,
      last_success_at: "2026-10-27T09:00:00Z",
      latest_run: {id: 11, event: "push", conclusion: "failure", created_at: "2026-10-29T09:00:00Z",
                   url: "https://github.com/example/alpha/actions/runs/11"}}]'
@@ -725,6 +726,95 @@ check "no PR title reaches a channel" \
   "$(digest_of 'quiet + {dependabot_prs: [one + {ready_to_merge: true, blockers: []}, one + {ready_to_merge: false, blockers: ["checks are red"]}],
                  kogut_prs: [one + {needs: "review"}], tasks: [one + {auto: false, needs: "start"}],
                  other_prs: [one + {stale: true, draft: false, age_days: 9}]}')"
+
+echo
+echo "why a workflow is red"
+cause_of() { jq -c -f scripts/causes.jq <<<"$1"; }
+check "a token GitHub refused reads as credentials" \
+  '. == {kind: "credentials", signature: "github-bad-credentials"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Bad credentials - https://docs.github.com/rest"], "log": null}]}')"
+check "an emulator that never booted reads as infra" \
+  '. == {kind: "infra", signature: "android-emulator-boot-timeout"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}]}')"
+check "a corrupt SDK download reads as infra, from the log" \
+  '. == {kind: "infra", signature: "android-sdk-corrupt-download"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Process completed with exit code 1."], "log": "Warning: An error occurred while preparing SDK package Google APIs Intel x86_64 Atom System Image: Error reading Zip content from a SeekableByteChannel.\n"}]}')"
+check "an image missing from the kind node reads as infra" \
+  '. == {kind: "infra", signature: "kind-image-not-loaded"}' \
+  "$(cause_of '{"jobs": [{"errors": ["ghcr.io/akogut/ephemeral-k8s-test-envs/aggregator:e69fac1 is not in the image store of preview-control-plane"], "log": null}]}')"
+check "a registry refusing a pull reads as external" \
+  '. == {kind: "external", signature: "registry-pull-refused"}' \
+  "$(cause_of '{"jobs": [{"errors": [], "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n"}]}')"
+check "the live platform not answering reads as external" \
+  '. == {kind: "external", signature: "live-platform-not-ready"}' \
+  "$(cause_of '{"jobs": [{"errors": [], "log": "Error: Restful Booker Platform is not ready after 29 attempts within 90000 ms\n"}]}')"
+check "anything else is unknown, with no signature" \
+  '. == {kind: "unknown", signature: null}' \
+  "$(cause_of '{"jobs": [{"errors": ["Process completed with exit code 1."], "log": "BUILD FAILED in 12m 44s\n"}]}')"
+check "a run with no failed jobs, or no jobs at all, is unknown" \
+  '. == [{kind: "unknown", signature: null}, {kind: "unknown", signature: null}]' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": []}') $(cause_of '{}')")"
+check "a test suite saying Bad credentials is not a refused token" \
+  'all(.[]; . == {kind: "unknown", signature: null})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": [], "log": "Bad credentials - https://docs.github.com/rest\n"}]}') $(cause_of '{"jobs": [{"errors": ["expected reason to equal Bad credentials - https://docs.github.com/rest"], "log": null}]}')")"
+check "a log line alone cannot claim an annotation's signature, and an error line needs the whole message" \
+  'all(.[]; . == {kind: "unknown", signature: null})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": [], "log": "Timeout waiting for emulator to boot.\n"}]}') $(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot. Retried later"], "log": null}]}')")"
+check "one job with an unexplained failure leaves the whole run unknown" \
+  '. == {kind: "unknown", signature: null}' \
+  "$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": [], "log": "BUILD FAILED\n"}]}')"
+check "a job that was not read leaves the whole run unknown" \
+  '. == {kind: "unknown", signature: null}' \
+  "$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": [], "log": null}]}')"
+check "a refused token outranks every other job" \
+  '. == {kind: "credentials", signature: "github-bad-credentials"}' \
+  "$(cause_of '{"jobs": [{"errors": [], "log": "BUILD FAILED\n"}, {"errors": ["Bad credentials - https://docs.github.com/rest"], "log": null}]}')"
+check "infra next to an outage reads as the outage, and all infra stays infra" \
+  '.[0].kind == "external" and .[1] == {kind: "infra", signature: "android-emulator-boot-timeout"}' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": [], "log": "Restful Booker Platform is not ready after 29 attempts\n"}]}') $(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": ["Timeout waiting for emulator to boot."], "log": null}]}')")"
+check "the answer carries no text from the log" \
+  'keys == ["kind", "signature"]' \
+  "$(cause_of '{"jobs": [{"errors": ["Bad credentials - https://docs.github.com/rest"], "log": "something secret\n"}]}')"
+
+ci_causes="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixtures/ci-causes.json)"
+c_helpers='def w($r; $n): .repos[] | select(.name == $r) | .ci_failing[] | select(.name == $n);'
+c_check() { check "$1" "$c_helpers $2" "$ci_causes"; }
+c_check "infra past the streak is retried, and says why" \
+  'w("settled"; "infra-past-streak") | .failing_streak == 4
+     and .action == {name: "rerun", reason: "failed on infrastructure (android-emulator-boot-timeout), which a retry can clear"}
+     and .held == null and .cause.kind == "infra"'
+c_check "infra stops at the limit, so it cannot loop" \
+  '[w("settled"; "infra-below-limit", "infra-at-limit") | .action.name] == ["rerun", null]'
+c_check "infra is still retried once per run" \
+  'w("settled"; "infra-retried") | .failing_streak == 4 and .action == null'
+c_check "a short streak of infra reads like any other first retry" \
+  'w("settled"; "infra-short") | .action == {name: "rerun", reason: "failed on the current head and not retried yet"}'
+c_check "unknown and external do not pass the streak, and a snapshot without a cause is unknown" \
+  '[w("settled"; "unknown-past-streak", "no-cause-past-streak", "external-past-streak") | .action] == [null, null, null]
+     and (w("settled"; "no-cause-past-streak") | .cause == {kind: "unknown", signature: null})'
+c_check "up to two failures in a row get the first retry whatever the cause" \
+  'w("settled"; "unknown-two") | .failing_streak == 2 and .action.name == "rerun"'
+c_check "an outage still gets the ordinary first retry" \
+  'w("settled"; "external-short") | .action.name == "rerun" and .cause.signature == "live-platform-not-ready"'
+c_check "a refused token is never retried or started, and says so" \
+  '[w("settled"; "credentials-short", "credentials-past-streak", "credentials-older-commit")
+     | .action == null and (.held | contains("a retry cannot fix that"))] == [true, true, true]'
+c_check "a schedule that can cancel a run holds back a dispatch while the head is young" \
+  'w("fresh"; "cron-cancel") | .action == null and (.held | contains("cancel-in-progress"))'
+c_check "a day on the default branch lifts that hold" \
+  'w("settled"; "cron-cancel-older-commit") | .action.name == "dispatch" and .held == null'
+c_check "without a date on the head, the hold stays" \
+  '(w("undated"; "cron-cancel") | .action == null and .held != null) and (w("undated"; "plain") | .action.name == "dispatch")'
+c_check "a cron alone, cancel-in-progress alone, or neither does not hold a dispatch" \
+  '[w("fresh"; "cron-only", "cancel-only", "plain") | .action.name] == ["dispatch", "dispatch", "dispatch"]'
+c_check "the hold is about dispatch: a retry on the head goes on, and a workflow that cannot start says nothing" \
+  '(w("fresh"; "cron-cancel-on-head") | .action.name == "rerun" and .held == null)
+     and (w("fresh"; "cron-cancel-not-startable") | .action == null and .held == null)'
+check "the digest names a known cause next to a red workflow, and only a known one" \
+  '(.[0].text | contains("[Nightly](https://example/run), 4 in a row: credentials (github-bad-credentials)"))
+     and (.[1].text | contains("[Nightly](https://example/run), 4 in a row") and (contains("unknown") | not))' \
+  "$(digest_of '(quiet + {ci_failing: [run(".github/workflows/n.yml") + {cause: {kind: "credentials", signature: "github-bad-credentials"}}]}),
+                (quiet + {ci_failing: [run(".github/workflows/n.yml") + {cause: {kind: "unknown", signature: null}}]})')"
 
 echo
 echo "$passed passed, $failed failed"

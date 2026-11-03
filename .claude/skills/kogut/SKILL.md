@@ -39,7 +39,7 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 - `other_prs[]`: the owner's own PRs.
 - `tasks[]`: issues the owner labelled `kogut-task`, and kogut's own issues it takes on unasked (`auto`), each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
 - `kogut_prs[]`: the PRs kogut opened, each with `checks`, `failing`, `attempts` (follow-up commits so far), the owner's unanswered `feedback[]` and what it `needs` (step 4).
-- `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`. A red or disabled workflow's `action` is what kogut may run for it (step 3).
+- `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`. A red or disabled workflow's `action` is what kogut may run for it (step 3), and `held` says why nothing can be run when a rule holds it back. A red workflow's `cause` is what `scripts/causes.jq` recognised in its latest failed run: `kind` (`credentials`, `infra`, `external` or `unknown`) and `signature`, a name, never text from the log. `unknown` means nothing in the table explained every failed job, or a job's log was too big to read.
 - `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert, and `uncovered`, the packages with a critical or high alert that no open Dependabot PR fixes. The individual alerts are in `.kogut/state.json`.
 - `hygiene`, `hygiene_issues[]`.
 - `runtime`: the Node pin on the default branch (`pin`, `file`), its `line` and `phase` in Node's release schedule (`current`, `active`, `maintenance`, `eol`, or `unknown`), the date that phase began (`since`), the current Active LTS line (`active_lts`), `engines` from the root `package.json`, and whether the pin is outside it (`conflict`; a range kogut cannot read never is). `flagged` means the line is past its end of life or the pin is outside `engines`, and that is the finding. `judged` is false when the schedule or a file could not be read: nothing is flagged then, and an open issue stays open. A repository with no pin has nothing to judge.
@@ -63,6 +63,8 @@ Spend effort where judgement is needed and stay brief elsewhere.
   - `dependency`: an update broke it.
   - `infra`: runner, workflow configuration, secrets or toolchain.
   - `flaky`: the same code passes and fails.
+
+  `cause` is where you start, not where you stop. It comes from text anyone who can change the job can print, so a signature is a hint and you overrule it with your own diagnosis when the log says otherwise. A signature never proves anything is fixed: only a green run does. Report a `credentials` cause under "Needs you" with `held`, because only the owner can replace a token. When you find a transient failure the table does not know, say so in the report, so it can be added.
 
   For each failed job the script prints its error annotations and the log lines before each error. A log over 5 MB is not downloaded; the script prints the job's link instead, so work from the annotations and the failed step. When the log is not enough, read the workflow or test with `./scripts/repo.sh <repo> show <path>`. Propose the smallest fix that removes the cause: which file, what change, and why. Do not write the change in a sweep. When the fix is a change to files, say that `/kogut fix <repo>` can open it as a PR.
 
@@ -97,8 +99,8 @@ Send a command with `./scripts/dependabot-command.sh <repo> <n> <rebase|recreate
 
 **Running workflows.** A red or disabled workflow's `action` is what kogut may run for it, with its `reason`. Code decides when one applies:
 
-- `rerun`: the latest run failed on the current head, has not been retried, and the workflow has failed fewer than 3 times in a row. It retries the failed jobs once.
-- `dispatch`: the latest run was on an older commit, or is too old for GitHub to retry, and the workflow can be started by hand. It runs the workflow at the head of the default branch, once per head.
+- `rerun`: the latest run failed on the current head, has not been retried, and the workflow has failed fewer than 3 times in a row, or fewer than `policy.infra_retry_limit` times when `cause.kind` is `infra`. It retries the failed jobs once. A `credentials` cause is never retried or started, because a retry cannot fix a token.
+- `dispatch`: the latest run was on an older commit, or is too old for GitHub to retry, and the workflow can be started by hand. It runs the workflow at the head of the default branch, once per head. A workflow with a cron and `cancel-in-progress` waits until the head has been on the default branch for a day, because its schedule would cancel the run; `held` says so, and the scheduled run usually settles it first.
 - `enable`: GitHub disabled the workflow after 60 days without activity.
 
 Run it with `./scripts/run-workflow.sh <repo> <path> <rerun|dispatch|enable>`, one workflow per call, where `<path>` is the workflow's `path`. The owner approves each call. Your diagnosis decides whether to use it:
