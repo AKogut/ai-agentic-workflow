@@ -655,10 +655,10 @@ def ci_action($w; $runs; $head_sha; $app):
           local_clone: .local_clone
         },
         hygiene_issues: [
-          (if ($required | length) == 0 then
+          (if ($required | length) == 0 and (.required_checks_unread != true) then
             "no required status checks on \(.repo.default_branch): a PR without checks would look green" else empty end),
           (if .repo.allow_auto_merge | not then "auto-merge is disabled" else empty end),
-          (if .dependabot_config | not then "no .github/dependabot.yml" else empty end),
+          (if .dependabot_config == false then "no .github/dependabot.yml" else empty end),
           (if .alerts.status == "disabled" then "Dependabot alerts are disabled" else empty end),
           (if .alerts.status == "unavailable" then "Dependabot alerts could not be read" else empty end),
           (if $idle >= $p.inactivity_warn_days then

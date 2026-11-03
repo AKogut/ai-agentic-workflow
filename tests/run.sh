@@ -323,6 +323,14 @@ check "a disabled workflow is a finding" \
   'repo("alpha") | any(.findings[]; .key == "workflow-disabled:.github/workflows/old-nightly.yml" and .facts.state == "disabled_inactivity")'
 check "critical and high alerts are one finding, worst first" \
   'repo("alpha") | .findings[] | select(.key == "alerts") | .facts.packages | map(.package) == ["shell-quote", "next"]'
+unread="$(jq '(.repos[] | select(.name == "alpha")) |= (.dependabot_config = null | .required_checks = [] | .required_checks_unread = true)' tests/fixtures/state.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "a file or a rule that could not be read is not reported as missing" \
+  'repo("alpha") | .hygiene_issues == []' "$unread"
+check "the merge gate still blocks when the required checks could not be read" \
+  'pr("alpha"; 1) | (.ready_to_merge | not) and any(.blockers[]; startswith("no required checks"))' "$unread"
+check "a file that is really missing is still reported" \
+  'repo("beta") | any(.hygiene_issues[]; . == "no .github/dependabot.yml")'
 check "hygiene gaps are one finding, and a well-kept repository has none" \
   '(repo("beta") | any(.findings[]; .key == "hygiene")) and (repo("alpha") | all(.findings[]; .key != "hygiene"))'
 check "majors are grouped per npm scope and wait for the model" \
