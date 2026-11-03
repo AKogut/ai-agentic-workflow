@@ -5,7 +5,8 @@
 # Input (built by progress.sh): since, until, owner, app, repos (the watched
 # names), kogut (search results: every PR and issue the App opened), merged
 # (search results: PRs merged since the window began) and figures (per
-# repository: the App's comments and the Dependabot alerts, fixed and open).
+# repository: the App's comments, the commands to Dependabot under the owner's
+# login, and the Dependabot alerts, fixed and open).
 # With --arg format json the figures are printed, otherwise a markdown report.
 
 def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
@@ -20,7 +21,12 @@ def repo_figures($in; $name):
   | [$mine[] | select(.__typename == "Issue")] as $issues
   | [$in.merged[] | select(.repository.name == $name and (.mergedAt | in_window($since)))] as $merged
   | ([$in.figures[] | select(.name == $name)][0] // {comments: [], alerts: {status: "unavailable", fixed: [], open: []}}) as $f
-  | [$f.comments[] | select(.created_at | in_window($since))] as $comments
+  | [$f.comments[] | select(.created_at | in_window($since))] as $written
+  | [$written[] | select(.by | is_app($app))] as $comments
+  # kogut sends these under the owner's login, because Dependabot refuses the App,
+  # and on GitHub they look the same as ones the owner typed. So they are counted
+  # next to the owner's figures, and never as kogut's.
+  | [$written[] | select(.by == $owner and (.body | test("^@dependabot (rebase|recreate)\\s*$")))] as $commands
   | {
       name: $name,
       kogut: {
@@ -48,13 +54,15 @@ def repo_figures($in; $name):
         merged: ($merged | count(.mergedBy.login == $owner)),
         kogut_fixes: ($merged | count(.mergedBy.login == $owner and (.author.login | is_app($app)))),
         dependabot: ($merged | count(.mergedBy.login == $owner and (.author.login | is_app("dependabot")))),
-        own: ($merged | count(.mergedBy.login == $owner and .author.login == $owner))
+        own: ($merged | count(.mergedBy.login == $owner and .author.login == $owner)),
+        dependabot_commands: ($commands | length)
       },
       # The PRs and issues behind the numbers, for the links in the report.
       links: {
         kogut_merged: [$merged[] | select(.mergedBy.login // "" | is_app($app)) | .url],
         fix_prs: [$prs[] | select(.createdAt | in_window($since)) | .url],
-        issues: [$issues[] | select(.createdAt | in_window($since)) | .url]
+        issues: [$issues[] | select(.createdAt | in_window($since)) | .url],
+        dependabot_commands: [$commands[] | .url]
       },
       alerts: {
         status: $f.alerts.status,
@@ -105,7 +113,10 @@ def markdown:
     "Dependabot alerts closed: \(total($t.alerts.fixed)) (\(severities($t.alerts.fixed))). Open now: \(severities($t.alerts.open)).",
     "",
     ("The owner merged \(plural($t.owner.merged; "PR")): \($t.owner.kogut_fixes) of kogut's fixes,"
-      + " \($t.owner.dependabot) from Dependabot and \($t.owner.own) of their own."),
+      + " \($t.owner.dependabot) from Dependabot and \($t.owner.own) of their own."
+      + ($t.owner.dependabot_commands
+          | if . > 0 then " \(plural(.; "command")) to Dependabot went out under the owner's login, typed by hand or sent through kogut: on GitHub the two look the same."
+            else "" end)),
     "",
     "| Repository | kogut merged | Fix PRs (merged) | Issues opened / closed | Comments | Alerts closed | Critical / high open | Owner merged (kogut's fixes) |",
     "|---|---|---|---|---|---|---|---|",

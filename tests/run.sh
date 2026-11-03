@@ -212,18 +212,36 @@ check "once kogut has answered, the task waits for the owner" \
   'task("alpha"; 43) | .needs == "owner"'
 check "a reply from the owner hands the task back to kogut" \
   'task("alpha"; 44) | .needs == "start"'
-check "alerts that no Dependabot PR names are known as uncovered" \
-  '(repo("alpha") | .findings[] | select(.key == "alerts") | .facts.uncovered) == ["shell-quote"]
-   and (repo("delta") | .findings[] | select(.key == "alerts") | .facts.uncovered) == []'
+check "a package no Dependabot PR fixes is uncovered, worst first, even when a PR names it" \
+  '(repo("alpha") | .findings[] | select(.key == "alerts") | .facts.uncovered) == ["shell-quote", "next"]'
+check "only critical and high alerts make a package uncovered" \
+  'repo("alpha") | .alerts.uncovered == ["next", "shell-quote"]'
+# On delta: #23 stops at a pre-release still in tar's range, #16 and #22 leave one
+# of brace-expansion's three ranges open, and ws's range cannot be read.
+check "a PR that names a package but leaves an alert open does not cover it" \
+  '(repo("delta") | .findings[] | select(.key == "alerts") | .facts.uncovered) == ["tar", "brace-expansion", "ws"]'
 check "kogut takes on its own alerts issue while a package is uncovered" \
   'task("alpha"; 46) | .auto and .needs == "start" and .finding'
 check "kogut takes on its own issue for a major" \
   'task("alpha"; 48) | .auto and .needs == "start"'
-check "kogut leaves its other issues, covered alerts and gone findings alone" \
-  '(repo("alpha") | [.tasks[].number] | index(47) == null)
-   and (repo("delta") | .tasks == []) and (repo("beta") | .tasks == [])'
+check "kogut leaves its other issues and gone findings alone" \
+  '(repo("alpha") | [.tasks[].number] | index(47) == null) and (repo("beta") | .tasks == [])'
 check "a marker copied into an issue by someone else makes no task" \
   'repo("alpha") | [.tasks[].number] | index(49) == null'
+# delta with only the alerts its PRs fix, then with some of those PRs taken away.
+delta_only='(.repos[] | select(.name == "delta") | .alerts.items) |= map(select(.package | IN("vite", "undici", "ms")))'
+fixed_only="$(jq "$delta_only" tests/fixtures/state.json | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+without_19="$(jq "$delta_only"' | (.repos[] | select(.name == "delta") | .prs) |= map(select(.number != 19))' tests/fixtures/state.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+without_19_24="$(jq "$delta_only"' | (.repos[] | select(.name == "delta") | .prs) |= map(select(.number | IN(19, 24) | not))' tests/fixtures/state.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "alerts the PRs fix are covered, and kogut leaves their issue alone" \
+  'repo("delta") | .alerts.uncovered == [] and .tasks == []
+   and (.findings[] | select(.key == "alerts") | .facts.uncovered) == []' "$fixed_only"
+check "a group across several directories covers what it moves, though fixes[] cannot claim it" \
+  'repo("delta") | .alerts.uncovered == [] and (.dependabot_prs[] | select(.number == 24) | .fixes) == []' "$without_19"
+check "the same update in another directory does not cover an alert" \
+  'repo("delta") | .alerts.uncovered == ["undici"]' "$without_19_24"
 
 echo
 echo "workflows on the default branch"
@@ -284,7 +302,7 @@ check "a package carries its worst alert, its count and every fixed version" \
 check "an alert without a fix leaves the fixed versions empty" \
   'repo("alpha") | .alerts.packages[2].patched == []'
 check "a repository without alerts has an empty summary" \
-  'repo("beta") | .alerts == {total: 0, by_severity: {}, packages: []}'
+  'repo("beta") | .alerts == {total: 0, by_severity: {}, packages: [], uncovered: []}'
 
 echo
 echo "findings tracked as issues"
@@ -305,6 +323,14 @@ check "a disabled workflow is a finding" \
   'repo("alpha") | any(.findings[]; .key == "workflow-disabled:.github/workflows/old-nightly.yml" and .facts.state == "disabled_inactivity")'
 check "critical and high alerts are one finding, worst first" \
   'repo("alpha") | .findings[] | select(.key == "alerts") | .facts.packages | map(.package) == ["shell-quote", "next"]'
+unread="$(jq '(.repos[] | select(.name == "alpha")) |= (.dependabot_config = null | .required_checks = [] | .required_checks_unread = true)' tests/fixtures/state.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "a file or a rule that could not be read is not reported as missing" \
+  'repo("alpha") | .hygiene_issues == []' "$unread"
+check "the merge gate still blocks when the required checks could not be read" \
+  'pr("alpha"; 1) | (.ready_to_merge | not) and any(.blockers[]; startswith("no required checks"))' "$unread"
+check "a file that is really missing is still reported" \
+  'repo("beta") | any(.hygiene_issues[]; . == "no .github/dependabot.yml")'
 check "hygiene gaps are one finding, and a well-kept repository has none" \
   '(repo("beta") | any(.findings[]; .key == "hygiene")) and (repo("alpha") | all(.findings[]; .key != "hygiene"))'
 check "majors are grouped per npm scope and wait for the model" \
@@ -483,13 +509,24 @@ check "issues kogut closed are kept apart from the owner's" \
 check "comments count from when they were written, commands among them" \
   "$p_repo"' p("alpha") | .kogut.comments == 2 and .kogut.commands == 1' "$progress"
 check "the owner's merges split into kogut's fixes, Dependabot's and their own" \
-  "$p_repo"' p("alpha") | .owner == {merged: 3, kogut_fixes: 1, dependabot: 1, own: 1}' "$progress"
+  "$p_repo"' p("alpha") | .owner | {merged, kogut_fixes, dependabot, own} == {merged: 3, kogut_fixes: 1, dependabot: 1, own: 1}' "$progress"
+check "commands under the owner's login count in the window, and only whole commands from the owner" \
+  "$p_repo"' p("alpha") | .owner.dependabot_commands == 2 and .links.dependabot_commands == ["o1", "o2"]' "$progress"
+check "commands under the owner's login never count as kogut's" \
+  "$p_repo"' p("alpha") | .kogut.comments == 2 and .kogut.commands == 1 and (.links.kogut_merged | index("o1") == null)' "$progress"
+check "the report does not claim those commands for kogut, or for the owner's own hand" \
+  'split("\n") | any(.[]; contains("2 commands to Dependabot went out under the owner'"'"'s login, typed by hand or sent through kogut"))' \
+  "$(jq -Rs . <<<"$report")"
+no_commands="$(jq 'del(.figures[0].comments[] | select(.by == "example"))' tests/fixtures/progress.json | jq -r --arg format markdown -f scripts/progress.jq)"
+check "no commands, no sentence about them" \
+  'contains("under the owner") | not' "$(jq -Rs . <<<"$no_commands")"
 check "alerts closed in the window and open now are counted by severity" \
   "$p_repo"' p("alpha") | .alerts.fixed == {high: 1, critical: 1} and .alerts.open == {critical: 1, high: 2}' "$progress"
 check "the PRs and issues behind the numbers come with their links" \
   "$p_repo"' p("alpha") | .links == {kogut_merged: ["https://github.com/example/alpha/pull/20"],
      fix_prs: ["https://github.com/example/alpha/pull/1", "https://github.com/example/alpha/pull/2", "https://github.com/example/alpha/pull/3"],
-     issues: ["https://github.com/example/alpha/issues/10", "https://github.com/example/alpha/issues/11"]}' "$progress"
+     issues: ["https://github.com/example/alpha/issues/10", "https://github.com/example/alpha/issues/11"],
+     dependabot_commands: ["o1", "o2"]}' "$progress"
 check "repositories kogut does not watch stay out, totals included" \
   '[.repos[].name] == ["alpha", "beta"] and .totals.owner.merged == 3 and .totals.kogut.prs.opened == 4' "$progress"
 check "the report sums up the window and marks alerts it could not read" \

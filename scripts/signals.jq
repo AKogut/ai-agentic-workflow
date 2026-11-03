@@ -117,16 +117,34 @@ def pr_directory:
     | if . == "/" then . else rtrimstr("/") end
   end;
 
-# The open alerts a PR fixes, per package: one of its updates takes the package
-# in the alert's directory from inside the vulnerable range to outside it.
+# Whether one of the updates takes an alert's package from inside its vulnerable
+# range to outside it.
+def moved_out($a; $updates):
+  any($updates[]; .package == $a.package
+    and (.from | in_range($a.vulnerable)) and (.to | in_range($a.vulnerable) | not));
+
+# The open alerts a PR fixes, per package: one of its updates moves the package
+# out of the vulnerable range, in the alert's directory.
 def fixed_alerts($dir; $updates; $alerts):
   [$alerts[] | . as $a
-    | select($dir != null and ($a.manifest | manifest_dir) == $dir
-        and any($updates[]; .package == $a.package
-          and (.from | in_range($a.vulnerable)) and (.to | in_range($a.vulnerable) | not)))]
+    | select($dir != null and ($a.manifest | manifest_dir) == $dir and moved_out($a; $updates))]
   | group_by(.package)
   | map({package: .[0].package, severity: (max_by(.severity | severity_rank) | .severity), count: length})
   | sort_by(-(.severity | severity_rank), .package);
+
+# The packages with a critical or high alert that no open Dependabot PR fixes,
+# so a fix for them has to come from kogut. The input is the PRs. It uses the
+# rule behind fixes[], so a PR that only names a package, moves it within the
+# vulnerable range or updates another directory does not cover the alert. A
+# group across several directories names no directory, so here it counts for any
+# of them: fixes[] must never invent a fix, because that skips the cooldown, but
+# here a wrong answer would send kogut after what Dependabot is already fixing.
+def uncovered_packages($alerts):
+  map({dir: pr_directory, updates: own_updates}) as $prs
+  | [$alerts[] | . as $a | select(.severity | IN("critical", "high"))
+      | select(any($prs[]; (.dir == null or .dir == ($a.manifest | manifest_dir)) and moved_out($a; .updates)) | not)
+      | .package]
+  | unique;
 
 # The merge gate. A PR is ready only when nothing below applies; the model may
 # hold a ready PR back, but never merges past a blocker. split_majors adds the
@@ -307,7 +325,7 @@ def task($owner; $app; $kogut_prs; $auto):
 
 # The tasks of one repository: the issues the owner labelled, plus kogut's own
 # issues that it takes on unasked (agreed with the owner on 2026-10-30): its
-# alerts issue while a critical or high package has no Dependabot PR, and an
+# alerts issue while no Dependabot PR fixes a critical or high alert, and an
 # issue it opened for a major, which means a migration. Only issues the App
 # filed itself count, so a stranger cannot forge one by copying the marker.
 def finding_key: [(.body // "") | capture("<!-- kogut-finding: (?<k>.+?) -->").k][0];
@@ -529,10 +547,7 @@ def findings:
             {key: "alerts", kind: "alerts", auto: true,
              title: "Security: critical and high Dependabot alerts",
              facts: {by_severity: $r.alerts.by_severity, packages: $serious,
-               # Packages no open Dependabot PR names: a fix for these has to come from kogut.
-               uncovered: [$serious[] | .package as $pkg
-                 | select([$r.dependabot_prs[] | (.bump.package // empty), .updates[].package] | index($pkg) | not)
-                 | .package]}}
+               uncovered: [$serious[] | select(.package | IN($r.alerts.uncovered[])) | .package]}}
           end),
       (if $r.hygiene_issues == [] then empty else
          {key: "hygiene", kind: "hygiene", auto: true,
@@ -627,7 +642,8 @@ def ci_action($w; $runs; $head_sha; $app):
         workflows_disabled: [.workflows[] | select(.state != "active") | {id, name, path, state,
           action: (if .state == "disabled_inactivity" then
             {name: "enable", reason: "GitHub disabled it after 60 days without activity"} else null end)}],
-        alerts: (.alerts.items | alert_summary),
+        alerts: ((.alerts.items | alert_summary)
+          + {uncovered: ([.prs[] | select(.author.login == "app/dependabot")] | uncovered_packages($r.alerts.items // []))}),
         runtime: runtime_signal($node_schedule),
         hygiene: {
           required_checks: $required,
@@ -639,10 +655,10 @@ def ci_action($w; $runs; $head_sha; $app):
           local_clone: .local_clone
         },
         hygiene_issues: [
-          (if ($required | length) == 0 then
+          (if ($required | length) == 0 and (.required_checks_unread != true) then
             "no required status checks on \(.repo.default_branch): a PR without checks would look green" else empty end),
           (if .repo.allow_auto_merge | not then "auto-merge is disabled" else empty end),
-          (if .dependabot_config | not then "no .github/dependabot.yml" else empty end),
+          (if .dependabot_config == false then "no .github/dependabot.yml" else empty end),
           (if .alerts.status == "disabled" then "Dependabot alerts are disabled" else empty end),
           (if .alerts.status == "unavailable" then "Dependabot alerts could not be read" else empty end),
           (if $idle >= $p.inactivity_warn_days then

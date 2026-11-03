@@ -116,10 +116,19 @@ collect_repo() {
 
   # Required checks come from classic branch protection and from rulesets; the
   # rules endpoint returns only the rulesets that actually apply to the branch.
+  # Classic protection answers 404 for a branch without it, so its failure means
+  # nothing. The rules endpoint answers for every branch, so its failure is a
+  # failed read: the merge gate still sees no required checks and blocks, but it
+  # must not be reported as a gap.
+  local rules required_unread=false
+  if ! rules="$(gh api "repos/$full/rules/branches/$branch" \
+    --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]' 2>/dev/null)"; then
+    rules='[]'
+    required_unread=true
+  fi
   {
     api_or '[]' "repos/$full/branches/$branch/protection/required_status_checks" --jq '[.checks[].context]'
-    api_or '[]' "repos/$full/rules/branches/$branch" \
-      --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]'
+    printf '%s\n' "$rules"
   } | jq -s 'add | unique' >"$dir/required.json"
 
   # A repository can have more than one page of alerts. --jq runs once per
@@ -192,11 +201,19 @@ collect_repo() {
   gh issue list -R "$full" --state open --label kogut --author "app/$(kogut_app_slug)" --limit 50 \
     --json number,title,body,author,url,comments >"$dir/kogut-issues.json"
 
-  local dependabot_config=false
-  if gh api "repos/$full/contents/.github/dependabot.yml" --silent 2>/dev/null ||
-    gh api "repos/$full/contents/.github/dependabot.yaml" --silent 2>/dev/null; then
-    dependabot_config=true
-  fi
+  # A failed read says nothing about the file, so it stays null rather than
+  # passing for a missing one, which would file a false hygiene issue.
+  local dependabot_config=false config_file config_status
+  for config_file in .github/dependabot.yml .github/dependabot.yaml; do
+    config_status=0
+    branch_file "$full" "$branch" "$config_file" "$dir/file.err" >/dev/null || config_status=$?
+    if [ "$config_status" -eq 0 ]; then
+      dependabot_config=true
+      break
+    elif [ "$config_status" -ne 1 ]; then
+      dependabot_config=null
+    fi
+  done
 
   # The Node pin on the default branch and the range the project declares. The
   # rules about them are in signals.jq, which also needs to know a read failed:
@@ -240,6 +257,7 @@ collect_repo() {
     --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
+    --argjson required_unread "$required_unread" \
     --argjson local_clone "$local_clone" \
     --arg pin "$pin" \
     --arg pin_file "$pin_file" \
@@ -253,6 +271,7 @@ collect_repo() {
       workflows: $workflows[0],
       runs: $runs[0],
       required_checks: $required[0],
+      required_checks_unread: $required_unread,
       alerts: $alerts[0],
       branches: $branches[0],
       tasks: $tasks[0],

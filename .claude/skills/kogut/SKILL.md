@@ -40,7 +40,7 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 - `tasks[]`: issues the owner labelled `kogut-task`, and kogut's own issues it takes on unasked (`auto`), each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
 - `kogut_prs[]`: the PRs kogut opened, each with `checks`, `failing`, `attempts` (follow-up commits so far), the owner's unanswered `feedback[]` and what it `needs` (step 4).
 - `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`. A red or disabled workflow's `action` is what kogut may run for it (step 3).
-- `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert. The individual alerts are in `.kogut/state.json`.
+- `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert, and `uncovered`, the packages with a critical or high alert that no open Dependabot PR fixes. The individual alerts are in `.kogut/state.json`.
 - `hygiene`, `hygiene_issues[]`.
 - `runtime`: the Node pin on the default branch (`pin`, `file`), its `line` and `phase` in Node's release schedule (`current`, `active`, `maintenance`, `eol`, or `unknown`), the date that phase began (`since`), the current Active LTS line (`active_lts`), `engines` from the root `package.json`, and whether the pin is outside it (`conflict`; a range kogut cannot read never is). `flagged` means the line is past its end of life or the pin is outside `engines`, and that is the finding. `judged` is false when the schedule or a file could not be read: nothing is flagged then, and an open issue stays open. A repository with no pin has nothing to judge.
 - `branches`: `prunable[]` and `kept[]`, each with its name, and for a kept one its `kind` and `reason`.
@@ -203,7 +203,7 @@ The script pushes only on top of the head it started from, and it refuses once t
 
 ## Tasks (`/kogut tasks` only)
 
-The owner hands kogut work by adding the label `kogut-task` to an issue, either one of kogut's own issues or any other. kogut also takes on two kinds of its own issues without a label, as the owner agreed: its alerts issue while a critical or high package has no Dependabot PR (`uncovered` in the alerts finding), and an issue it opened for a major, which means a migration. Those show as `auto: true`. `tasks[]` lists both kinds, and code decides what each `needs`:
+The owner hands kogut work by adding the label `kogut-task` to an issue, either one of kogut's own issues or any other. kogut also takes on two kinds of its own issues without a label, as the owner agreed: its alerts issue while no open Dependabot PR fixes a critical or high alert (`uncovered` in the alerts finding, by the rule behind `fixes[]`), and an issue it opened for a major, which means a migration. Those show as `auto: true`. `tasks[]` lists both kinds, and code decides what each `needs`:
 
 - `start`: take it on, or answer on it.
 - `in-progress`: a kogut PR names it already, and follow-ups carry it from there.
@@ -220,7 +220,7 @@ Your final message lists each task with what kogut did: the PR it opened, the an
 
 ## Progress (`/kogut progress` only)
 
-Run `./scripts/progress.sh` with the arguments as given. The window is the last 7 days unless `--days` or `--since` says otherwise. The script prints the whole report in markdown: a summary of what kogut did (merges, fix PRs, issues, comments), the Dependabot alerts closed and open, what the owner merged, and a table per repository. Code does every count.
+Run `./scripts/progress.sh` with the arguments as given. The window is the last 7 days unless `--days` or `--since` says otherwise. The script prints the whole report in markdown: a summary of what kogut did (merges, fix PRs, issues, comments), the Dependabot alerts closed and open, what the owner merged, and a table per repository. Code does every count. Commands to Dependabot go out under the owner's login, and on GitHub they look the same as ones the owner typed, so the report counts them next to the owner's figures. Do not claim them as kogut's.
 
 Your final message is that report as printed, with nothing changed. After it, add at most three lines that name the PRs and issues behind the biggest numbers, as links. `./scripts/progress.sh … --json` lists them per repository under `links`. Do not estimate time saved or add figures of your own. Nothing is posted or changed.
 
