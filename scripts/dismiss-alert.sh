@@ -36,6 +36,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 full="$(kogut_owner)/$repo"
 permission='{"vulnerability_alerts":"write"}'
 

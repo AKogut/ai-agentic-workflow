@@ -21,6 +21,7 @@ usage="usage: prune-branches.sh <repo> --dry-run | <repo> [--dry-run] <branch> [
 repo="$1"
 shift
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 dry_run=false
 names=()
 for arg in "$@"; do

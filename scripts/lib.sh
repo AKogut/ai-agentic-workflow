@@ -40,6 +40,59 @@ kogut_require_repo() {
     die "'$1' is not in kogut.config.json (known: $(kogut_repos | paste -sd, -))"
 }
 
+# The owner's stop switch, kept outside the repository so a run from any worktree
+# sees it (scripts/hold.sh sets it). Prints why a repository is on hold and
+# succeeds, or fails when it is not. No file means no hold, and a file that cannot
+# be read holds every repository, so a damaged switch cannot fail open.
+kogut_hold_file() { echo "${KOGUT_HOLD_FILE:-$HOME/.config/kogut/hold.json}"; }
+kogut_held() {
+  local file why
+  file="$(kogut_hold_file)"
+  [ -e "$file" ] || [ -L "$file" ] || return 1
+  # shellcheck disable=SC2016 # $r belongs to jq
+  if ! why="$(jq -rs --arg r "$1" '
+    if length == 1 and (.[0] | type) == "object" and (.[0].repos | type) == "object" then
+      .[0].repos[$r] | if . == null then "" else
+        "on hold since \(.since // "an unknown date")\(if .reason then ": \(.reason)" else "" end)" end
+    else error("not a hold file") end' "$file" 2>/dev/null)"; then
+    echo "on hold, because the hold file cannot be read: $file"
+    return 0
+  fi
+  [ -n "$why" ] || return 1
+  echo "$why"
+}
+# For a script that writes on GitHub. It runs before anything else, dry runs
+# included, so a dry run never promises what the real call would refuse.
+kogut_require_not_held() {
+  local why
+  if why="$(kogut_held "$1")"; then
+    die "$1 is $why. Nothing was done; only the owner lifts a hold (./scripts/hold.sh off $1)"
+  fi
+}
+
+# A scheduled run starts right after the Mac wakes, before the network is back.
+kogut_wait_online() {
+  local _
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    gh api rate_limit --silent 2>/dev/null && return 0
+    sleep 30
+  done
+  return 1
+}
+
+# A fresh digest. GitHub works out mergeability when asked, so a first read can
+# say UNKNOWN. Arguments: the snapshot's path, then the repositories, if not all.
+kogut_settled_digest() {
+  local state="$1" digest
+  shift
+  digest="$(KOGUT_STATE="$state" "$KOGUT_ROOT/scripts/collect.sh" "$@")"
+  if jq -e 'any(.repos[].dependabot_prs[]?; .mergeable == "UNKNOWN")' <<<"$digest" >/dev/null; then
+    sleep 30
+    digest="$(KOGUT_STATE="$state" "$KOGUT_ROOT/scripts/collect.sh" "$@")"
+  fi
+  printf '%s\n' "$digest"
+}
+
 # Local clone of a configured repository, with ~ expanded.
 kogut_repo_path() {
   local p

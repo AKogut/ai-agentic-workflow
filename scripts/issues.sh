@@ -49,6 +49,10 @@ digest="$(KOGUT_STATE="$state" "$KOGUT_ROOT/scripts/collect.sh" $names)"
 
 failed=0
 for repo in $names; do
+  if why="$(kogut_held "$repo")"; then
+    echo "$repo: skipped, $why"
+    continue
+  fi
   rdigest="$(jq -c --arg r "$repo" '.repos[] | select(.name == $r)' <<<"$digest")"
   if [ -n "$(jq -r '.error // empty' <<<"$rdigest")" ]; then
     echo "$repo: skipped, the collection failed: $(jq -r '.error' <<<"$rdigest")"

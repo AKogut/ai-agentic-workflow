@@ -146,6 +146,38 @@ def uncovered_packages($alerts):
       | .package]
   | unique;
 
+# The metadata Dependabot writes at the end of its commit message:
+#   ---
+#   updated-dependencies:
+#   - dependency-name: x
+#     dependency-type: direct:development
+#     update-type: version-update:semver-patch
+#   ...
+#   Signed-off-by: dependabot[bot] <support@github.com>
+# Returns the entries, or null unless the message has exactly one such block, at
+# its end, holding nothing but the fields Dependabot writes. So text quoted
+# higher up cannot add to it or pass for it, and a format kogut does not know
+# reads as nothing.
+def commit_metadata:
+  (. // "" | split("\n") | map(rtrimstr("\r"))) as $l
+  | [$l | to_entries[] | select(.value == "updated-dependencies:") | .key] as $at
+  | if $at == [] or $l[$at[0] - 1] != "---" then null
+    else
+      ([$l | to_entries[] | select(.key > $at[0] and .value == "...") | .key] | first) as $end
+      | if $end == null or any($l[$end + 1:][]; (test("^\\s*$") or startswith("Signed-off-by: ")) | not) then null
+        else
+          reduce $l[$at[0] + 1:$end][] as $line ([];
+            if . == null then null else
+              ([$line | capture("^(?<lead>- |  )(?<key>dependency-name|dependency-version|dependency-type|update-type|dependency-group): (?<value>.*)$")] | first) as $c
+              | if $c == null then null
+                elif $c.lead == "- " and $c.key == "dependency-name" then . + [{($c.key): $c.value}]
+                elif $c.lead == "  " and length > 0 then .[-1] += {($c.key): $c.value}
+                else null end
+            end)
+          | if . == [] then null else . end
+        end
+    end;
+
 # The merge gate. A PR is ready only when nothing below applies; the model may
 # hold a ready PR back, but never merges past a blocker. split_majors adds the
 # one blocker that needs the other PRs, and sets ready_to_merge.
@@ -171,6 +203,8 @@ def dependabot_pr($required; $alerts; $p):
       # The commit the gate judged; a merge must land exactly this one.
       head: .headRefOid,
       age_days: $age,
+      # Read by the auto-merge rule below.
+      head_commit: {authors: (.head_authors // []), updates: (.head_message | commit_metadata)},
       # A run started on the branch has the repository's secrets, which
       # Dependabot's own runs do not, so it waits for the cooldown like a merge.
       in_cooldown: $held,
@@ -219,6 +253,45 @@ def split_majors:
 # GitHub names the same App three ways: "app/<slug>" for a PR's author,
 # "<slug>[bot]" for a commit's and "<slug>" for a comment's.
 def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
+
+# Whether kogut may merge a PR with nobody watching: the one tier the owner agreed
+# to on 2026-11-03. A patch to a dev dependency, by the title and by Dependabot's
+# own metadata, from a head commit only Dependabot wrote, past the full cooldown,
+# onto a default branch that is not red. Every reason not to is listed, and
+# whatever cannot be read counts as a reason. A fix for a high alert skips the
+# cooldown in the gate but not here: the cooldown is the only guard this tier has
+# against a hostile release, because nobody reads the prompt. $red names the red
+# workflows of the default branch, without Dependabot's own runs.
+def auto_merge_rule($p; $red):
+  (.head_commit.updates) as $u
+  | (.age_days // -1) as $age
+  | ($p.cooldown_days | if type == "number" then . else null end) as $cooldown
+  | ($cooldown != null and $age >= $cooldown) as $old_enough
+  | ((.blockers // []) | map(select(startswith("younger than") | not))) as $others
+  | [
+      (if ($p.auto_merge | if type == "object" then .enabled else null end) != true then "auto-merge is off" else empty end),
+      (if $red != [] then "the default branch is red: \($red | join(", "))" else empty end),
+      (if .ready_to_merge == true then empty
+       elif $others != [] then "not ready: \($others | join("; "))"
+       elif $old_enough then "not ready"
+       else empty end),
+      (if .semver != "patch" then "a \(.semver // "unknown") update, not a patch" else empty end),
+      (if .title // "" | test("^[A-Za-z]+\\(deps-dev\\):") then empty else "the title does not say deps-dev" end),
+      (if $u == null then "the head commit's Dependabot metadata cannot be read"
+       else
+         (if all($u[]; .["dependency-type"] == "direct:development") then empty
+          else "the metadata names a dependency that is not direct:development" end),
+         (if all($u[]; .["update-type"] == "version-update:semver-patch") then empty
+          else "the metadata does not call every update a semver patch" end)
+       end),
+      (if (.head_commit.authors | length) > 0 and all(.head_commit.authors[]; is_app("dependabot")) then empty
+       else "the head commit is not only Dependabot's" end),
+      (if $old_enough then empty
+       else "\($age) day\(if $age == 1 then "" else "s" end) old, and this tier waits the full \($cooldown // "unknown")-day cooldown" end),
+      (if (.belongs_with // []) == [] then empty
+       else "belongs with \(.belongs_with | map("#\(.)") | join(", "))" end)
+    ] as $why
+  | {eligible: ($why == []), why: $why};
 
 # The Dependabot command that would get a stuck PR moving, if any. Only what
 # Dependabot and the owner wrote after the head commit counts, so anyone else's
@@ -722,5 +795,7 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
       }
     | . + {findings: findings}
     | . + {tasks: tasks($r; $owner; $app)}
+    | [.ci_failing[] | select(.path | startswith("dynamic/dependabot/") | not) | .name] as $red
+    | .dependabot_prs |= map(. + {auto_merge: auto_merge_rule($p; $red)})
   end]
 }

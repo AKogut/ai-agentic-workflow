@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Puts the daily digest on a schedule with launchd, in the owner's login session.
+# Puts the daily job on a schedule with launchd, in the owner's login session.
 # A run missed while the Mac sleeps happens when it wakes; one missed while it is
-# off does not. The job runs scripts/digest.sh from this working copy, so it
+# off does not. The job runs scripts/daily.sh from this working copy, so it
 # follows the branch checked out here, and writes to .kogut/digest.log.
 #
 #   ./scripts/digest-schedule.sh install [HH:MM]   # every day, 09:00 by default
@@ -37,7 +37,7 @@ case "${1:-}" in
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>$KOGUT_ROOT/scripts/digest.sh</string>
+    <string>$KOGUT_ROOT/scripts/daily.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -57,7 +57,7 @@ PLIST
     plutil -lint "$plist" >/dev/null || die "the plist did not come out valid: $plist"
     launchctl bootout "$domain/$label" 2>/dev/null || true
     launchctl bootstrap "$domain" "$plist"
-    echo "the digest runs every day at $at, and logs to $log"
+    echo "the daily job runs every day at $at, and logs to $log"
     ;;
   run)
     launchctl kickstart "$domain/$label"
@@ -78,7 +78,7 @@ PLIST
   uninstall)
     launchctl bootout "$domain/$label" 2>/dev/null || true
     rm -f "$plist"
-    echo "the digest is off"
+    echo "the daily job is off: no digest and no auto-merge"
     ;;
   *) die "$usage" ;;
 esac

@@ -45,6 +45,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 [[ "$path" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]] || die "not a workflow file: $path"
 case "$action" in rerun | dispatch | enable) ;; *) die "$usage" ;; esac
 if [ -n "$pr" ]; then

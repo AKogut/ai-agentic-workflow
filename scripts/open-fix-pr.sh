@@ -28,6 +28,7 @@ usage="usage: open-fix-pr.sh <repo> <slug> [--workflows] [--task <issue>] [--dry
 repo="$1" slug="$2"
 shift 2
 kogut_require_repo "$repo"
+kogut_require_not_held "$repo"
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]{1,48}$ ]] || die "not a fix slug: $slug"
 workflows=false dry_run=false task=""
 while [ $# -gt 0 ]; do
