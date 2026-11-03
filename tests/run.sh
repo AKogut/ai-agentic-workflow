@@ -453,6 +453,72 @@ check "the report sums up the window and marks alerts it could not read" \
      and any(.[]; . == "| beta | 0 | 1 (0) | 0 / 0 | 0 | n/a | n/a | 0 (0) |")' "$(jq -Rs . <<<"$report")"
 
 echo
+echo "dismissing alerts"
+# The argument is a jq expression for the input, built from these alerts, and
+# the variables override what is asked for. Single-quoted, so the shell leaves
+# the braces alone.
+dismissal() {
+  jq -cn 'def alert($n; $severity; $package; $manifest):
+            {number: $n, severity: $severity, package: $package, manifest: $manifest, url: "https://example/a/\($n)"};
+          def items: [alert(7; "medium"; "qs"; "app/package-lock.json"), alert(3; "low"; "qs"; "app/package-lock.json"),
+            alert(9; "high"; "qs"; "package-lock.json"), alert(11; "medium"; "ms"; "app/package-lock.json"),
+            alert(12; "high"; "size"; "app/package-lock.json"), alert(13; "low"; "size"; "app/package-lock.json"),
+            alert(14; "critical"; "bad"; "app/package-lock.json"), alert(15; "low"; "bad"; "app/package-lock.json")];
+          def input: {alerts: {status: "ok", items: items}, dependabot_prs: []};
+          '"${1:-input}" |
+    jq -c --arg package "${package:-qs}" --arg manifest "${manifest:-app/package-lock.json}" \
+      --arg reason "${reason-tolerable_risk}" --arg comment "${comment-build time only}" \
+      --argjson severe "${severe:-false}" -f scripts/dismiss.jq
+}
+check "only that package in that manifest is dismissed, in order" \
+  '.alerts == [{number: 3, severity: "low", url: "https://example/a/3"}, {number: 7, severity: "medium", url: "https://example/a/7"}]' "$(dismissal)"
+check "the same package in the root manifest is its own set" \
+  '[.alerts[].number] == [9]' "$(manifest=package-lock.json severe=true dismissal)"
+check "a package with no open alert there is refused" \
+  '.refusal == "no open alert for nope in app/package-lock.json"' "$(package=nope dismissal)"
+check "a manifest with no alert for the package is refused" \
+  '.refusal | startswith("no open alert")' "$(package=ms manifest=package-lock.json dismissal)"
+check "a critical alert is never dismissed, whatever comes with it" \
+  '.refusal | contains("a critical alert is never dismissed")' "$(package=bad severe=true dismissal)"
+check "a high alert needs --severe" \
+  '.refusal | endswith("pass --severe")' "$(package=size dismissal)"
+check "--severe takes the package's lower alerts with the high one" \
+  '[.alerts[].number] == [12, 13]' "$(package=size severe=true dismissal)"
+check "--severe with no high alert is refused, so the prompt says what is there" \
+  '.refusal | endswith("drop --severe")' "$(severe=true dismissal)"
+check "an open Dependabot PR that fixes the package in that directory holds it" \
+  '.refusal == "#5, #6 fixes qs in /app: the fix is on the way"' \
+  "$(dismissal 'input + {dependabot_prs: [{number: 5, directory: "/app", fixes: [{package: "qs"}]},
+                                          {number: 6, directory: "/app", fixes: [{package: "ms"}, {package: "qs"}]}]}')"
+check "a PR in another directory or for another package does not" \
+  '[.alerts[].number] == [3, 7]' \
+  "$(dismissal 'input + {dependabot_prs: [{number: 5, directory: "/", fixes: [{package: "qs"}]},
+                                          {number: 6, directory: "/app", fixes: [{package: "ms"}]},
+                                          {number: 8, directory: null, fixes: []}]}')"
+check "a fix for the root manifest holds the root manifest" \
+  '.refusal | startswith("#5 fixes qs in /:")' \
+  "$(manifest=package-lock.json severe=true dismissal 'input + {dependabot_prs: [{number: 5, directory: "/", fixes: [{package: "qs"}]}]}')"
+check "only GitHub's reasons are accepted" \
+  '.refusal | startswith("the reason must be one of tolerable_risk, not_used, inaccurate, no_bandwidth, fix_started")' "$(reason=because dismissal)"
+check "a reason is required" \
+  '.refusal | startswith("the reason must be one of")' "$(reason='' dismissal)"
+check "a comment is required" \
+  '.refusal | startswith("the comment is required")' "$(comment='' dismissal)"
+check "blanks are not a comment" \
+  '.refusal | startswith("the comment is required")' "$(comment='   ' dismissal)"
+check "a comment of 280 characters passes" \
+  '.alerts != null' "$(comment="$(printf 'x%.0s' $(seq 1 280))" dismissal)"
+check "a comment of 281 characters does not" \
+  '.refusal == "the comment has 281 characters, and GitHub takes 280"' "$(comment="$(printf 'x%.0s' $(seq 1 281))" dismissal)"
+check "nothing is dismissed when the alerts could not be read" \
+  '.refusal == "its alerts could not be read: unavailable"' "$(dismissal '{alerts: {status: "unavailable", items: []}}')"
+check "nothing is dismissed when the repository could not be read" \
+  '.refusal == "the repository could not be read: boom"' "$(dismissal '{error: "boom"}')"
+check "once the critical and high alerts are gone, so is the finding its issue tracks" \
+  '[.repos[] | select(.name == "alpha") | .findings[] | select(.key == "alerts")] == []' \
+  "$(jq '.repos |= map(if .alerts then .alerts.items |= map(select(.severity | IN("critical", "high") | not)) else . end)' tests/fixtures/state.json |
+    KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+
 echo "daily digest"
 # Each argument is a jq expression for the digest's repositories, built from a
 # quiet repository and one PR. Single-quoted, so the shell leaves the braces alone.

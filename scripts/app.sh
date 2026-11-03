@@ -29,14 +29,17 @@ set_app_id() {
 }
 slug="$(kogut_app_slug)"
 homepage="$(jq -r '.app.homepage' "$KOGUT_CONFIG")"
+# The App can write code, PRs, issues and workflow files, run workflows
+# (actions) and dismiss Dependabot alerts (vulnerability_alerts), and nothing
+# else. The manifest asks for these when the App is registered; on an App that
+# exists already, the owner adds a new one in its settings.
+app_permissions='{"metadata":"read","contents":"write","pull_requests":"write","issues":"write","workflows":"write","actions":"write","vulnerability_alerts":"write"}'
 
 case "${1:-}" in
   manifest)
     [ -z "$(kogut_app_id)" ] || die "$slug is already registered (id $(kogut_app_id))"
-    # The App can write code, PRs, issues and workflow files, and run workflows
-    # (actions), and nothing else. It has no webhook, because kogut runs on
-    # demand and never listens.
-    manifest="$(jq -cn --arg name "$slug" --arg url "$homepage" --arg owner "$(kogut_owner)" '{
+    # It has no webhook, because kogut runs on demand and never listens.
+    manifest="$(jq -cn --arg name "$slug" --arg url "$homepage" --arg owner "$(kogut_owner)" --argjson permissions "$app_permissions" '{
       name: $name,
       url: $url,
       description: "kogut, the maintenance agent for the \($owner) portfolio repositories. It merges Dependabot PRs that pass its policy and opens fix PRs for the owner to review.",
@@ -45,7 +48,7 @@ case "${1:-}" in
       hook_attributes: {url: $url, active: false},
       request_oauth_on_install: false,
       setup_on_update: false,
-      default_permissions: {metadata: "read", contents: "write", pull_requests: "write", issues: "write", workflows: "write", actions: "write"},
+      default_permissions: $permissions,
       default_events: []
     }')"
     page="$KOGUT_ROOT/.kogut/app-manifest.html"
@@ -144,10 +147,15 @@ EOF
     # What the owner has granted the installation. A permission added in the
     # App's settings counts only once the owner accepts it on the installation.
     first="$(kogut_repos | head -n 1)"
-    granted="$(curl -fsS -H "Authorization: Bearer $(kogut_app_jwt)" -H 'Accept: application/vnd.github+json' \
-      "https://api.github.com/repos/$(kogut_owner)/$first/installation" |
-      jq -r '.permissions | to_entries | map("\(.key): \(.value)") | join(", ")')" || granted=unknown
-    echo "granted: $granted"
+    if granted="$(curl -fsS -H "Authorization: Bearer $(kogut_app_jwt)" -H 'Accept: application/vnd.github+json' \
+      "https://api.github.com/repos/$(kogut_owner)/$first/installation" | jq -c '.permissions')"; then
+      echo "granted: $(jq -r 'to_entries | map("\(.key): \(.value)") | join(", ")' <<<"$granted")"
+      missing="$(jq -r --argjson want "$app_permissions" '. as $have | $want | to_entries
+        | map(select($have[.key] != .value) | "\(.key): \(.value)") | join(", ")' <<<"$granted")"
+      [ -z "$missing" ] || echo "not granted yet: $missing (the App's settings on GitHub, under Permissions, then accept on the installation)"
+    else
+      echo "granted: unknown"
+    fi
     exit "$failed"
     ;;
 
