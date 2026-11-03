@@ -94,6 +94,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Decision | Why |
 |---|---|
 | Runs locally in Claude Code, on demand | It runs on my Claude subscription and needs no API key or server. Approvals stay interactive. |
+| A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
 | One sweep instead of webhooks | Six repositories don't justify a workflow in each. One pass reads them all. |
 | Code is read from `origin`, never the working copy | A working copy may be on any branch with any local edits. |
@@ -153,6 +154,9 @@ scripts/task-reply.sh           kogut's answer on a task it cannot start yet
 scripts/app.sh                  registers the GitHub App and checks its installation
 scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
+scripts/digest.sh               the daily digest: collect, render, post; no model, read-only on GitHub
+scripts/digest.jq               renders the digest, and sets each report's colour
+scripts/digest-schedule.sh      puts the digest on launchd, or takes it off
 tests/run.sh                    policy tests against a fixed snapshot
 kogut.config.json               watched repositories and policy numbers
 ```
@@ -183,6 +187,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Dependabot commands:** stuck Dependabot PRs get `@dependabot rebase` or `recreate`, under my login, because Dependabot refuses an App
 - [x] **Progress:** `/kogut progress`, what kogut did over a window next to what I did
 - [x] **Workflow runs:** a retry, a run at the current head, a workflow turned back on, or a run on a PR's branch, by `kogut-agent[bot]`
+- [x] **Daily digest:** each repository's state in its channel every morning, without the model
 
 ## License
 

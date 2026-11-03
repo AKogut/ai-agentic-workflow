@@ -342,5 +342,49 @@ check "the report sums up the window and marks alerts it could not read" \
      and any(.[]; . == "| beta | 0 | 1 (0) | 0 / 0 | 0 | n/a | n/a | 0 (0) |")' "$(jq -Rs . <<<"$report")"
 
 echo
+echo "daily digest"
+# Each argument is a jq expression for the digest's repositories, built from a
+# quiet repository and one PR. Single-quoted, so the shell leaves the braces alone.
+digest_of() {
+  jq -cn 'def quiet: {name: "r", url: "https://example/r", ci_failing: [], dependabot_prs: [], kogut_prs: [],
+            tasks: [], other_prs: [], workflows_disabled: [], hygiene_issues: []};
+          def one: {number: 1, url: "https://example/1", title: "chore: a title someone wrote", semver: "patch"};
+          def run($path): {name: "Nightly", path: $path, failing_streak: 4, latest_run: {url: "https://example/run"}};
+          {repos: ['"$1"']}' | jq -c -f scripts/digest.jq
+}
+check "a quiet repository is green and says so" \
+  '.[0] | .status == "green" and (.text | contains("Nothing needs you."))' "$(digest_of 'quiet')"
+check "PRs in cooldown alone stay green and are only counted" \
+  '.[0] | .status == "green" and (.text | contains("Nothing needs you.") and contains("**In cooldown:** 1 PR"))' \
+  "$(digest_of 'quiet + {dependabot_prs: [one + {ready_to_merge: false, blockers: ["younger than the 3-day cooldown"]}]}')"
+check "a ready PR waits for a run, and a major says so" \
+  '.[0] | .status == "yellow" and (.text | contains("**Ready to merge:** [#1](https://example/1) (major)") and (contains("Nothing needs you.") | not))' \
+  "$(digest_of 'quiet + {dependabot_prs: [one + {semver: "major", ready_to_merge: true, blockers: []}]}')"
+check "a PR held by more than the cooldown is stuck, with its reasons" \
+  '.[0] | .status == "yellow" and (.text | contains("- [#1](https://example/1): checks are red; younger than the 3-day cooldown"))' \
+  "$(digest_of 'quiet + {dependabot_prs: [one + {ready_to_merge: false, blockers: ["checks are red", "younger than the 3-day cooldown"]}]}')"
+check "a red default branch is red" \
+  '.[0] | .status == "red" and (.text | contains("[Nightly](https://example/run), 4 in a row"))' \
+  "$(digest_of 'quiet + {ci_failing: [run(".github/workflows/n.yml")]}')"
+check "a red run of Dependabot's own is not the repository's CI" \
+  '.[0] | .status == "green" and (.text | contains("CI red") | not)' \
+  "$(digest_of 'quiet + {ci_failing: [run("dynamic/dependabot/dependabot-updates")]}')"
+check "a high alert is red, and medium alerts alone are not" \
+  '.[0].status == "red" and .[1].status == "green" and (.[0].text | contains("[2 high, 1 low](https://example/r/security/dependabot)"))' \
+  "$(digest_of '(quiet + {alerts: {by_severity: {low: 1, high: 2}}}), (quiet + {alerts: {by_severity: {medium: 3}}})')"
+check "a stale PR of the owner's shows, and a draft is marked" \
+  '.[0] | .status == "yellow" and (.text | contains("- [#1](https://example/1) (draft), 14 days old"))' \
+  "$(digest_of 'quiet + {other_prs: [one + {stale: true, draft: true, age_days: 14}]}')"
+check "kogut's own issues do not count as tasks waiting" \
+  '.[0] | .status == "green"' "$(digest_of 'quiet + {tasks: [one + {auto: true, needs: "start"}]}')"
+check "a repository that could not be read says why" \
+  '.[0] | .status == "yellow" and .text == "Could not read this repository: boom"' "$(digest_of '{name: "r", error: "boom"}')"
+check "no PR title reaches a channel" \
+  'all(.[]; .text | contains("a title someone wrote") | not)' \
+  "$(digest_of 'quiet + {dependabot_prs: [one + {ready_to_merge: true, blockers: []}, one + {ready_to_merge: false, blockers: ["checks are red"]}],
+                 kogut_prs: [one + {needs: "review"}], tasks: [one + {auto: false, needs: "start"}],
+                 other_prs: [one + {stale: true, draft: false, age_days: 9}]}')"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
