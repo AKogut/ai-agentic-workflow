@@ -357,6 +357,116 @@ def alert_summary:
       | sort_by(-(.severity | severity_rank), -.count, .package))
   };
 
+# The Node line a pin names: "20", "v20", "20.11.1", or an LTS codename such as
+# "lts/iron". Anything else (lts/*, node, stable) names no fixed line.
+def pin_line($schedule):
+  (. // "" | gsub("^\\s+|\\s+$"; "")) as $p
+  | if $p | test("^v?[0-9]+(\\.[0-9]+){0,2}$") then $p | ltrimstr("v") | split(".")[0] | tonumber
+    elif ($p | test("^lts/[a-zA-Z]+$")) and $schedule != null then
+      ($p[4:] | ascii_downcase) as $name
+      | [$schedule | to_entries[] | select((.value.codename // "" | ascii_downcase) == $name)
+          | .key | ltrimstr("v") | tonumber?] | first
+    else null end;
+
+# The versions a pin can resolve to, as [lowest, highest]: a pin that leaves out
+# a part stands for everything under it, so a bare "22" is the whole line.
+def pin_span($line):
+  999999 as $big
+  | (. // "" | gsub("^\\s+|\\s+$"; "") | ltrimstr("v")) as $p
+  | if $p | test("^[0-9]+(\\.[0-9]+){0,2}$") then
+      ($p | split(".") | map(tonumber)) as $n
+      | [($n + [0, 0])[:3], ($n + [$big, $big])[:3]]
+    else [[$line, 0, 0], [$line, $big, $big]] end;
+
+# One comparator of an engines range as bounds, or null when it cannot be read.
+# Each bound has a side, the version it is at, and whether that version is out.
+def comparator_bounds:
+  sub("(\\.[xX*])+$"; "") as $t
+  | if $t | IN("*", "x", "X") then []
+    else ([$t | capture("^(?<op>>=|<=|>|<|=|\\^|~)?v?(?<v>[0-9]+(\\.[0-9]+){0,2})$")] | first) as $c
+    | if $c == null then null else
+        ($c.v | split(".") | map(tonumber)) as $n
+        | ($n | length) as $parts
+        | (($n + [0, 0])[:3]) as $at
+        # The first version past a partial one: 22 → 23.0.0, 22.1 → 22.2.0.
+        | (if $parts == 1 then [$n[0] + 1, 0, 0] elif $parts == 2 then [$n[0], $n[1] + 1, 0] else $at end) as $past
+        | ($c.op // "=") as $op
+        | if $op == ">=" then [{side: "lo", at: $at, out: false}]
+          elif $op == ">" then
+            (if $parts == 3 then [{side: "lo", at: $at, out: true}] else [{side: "lo", at: $past, out: false}] end)
+          elif $op == "<" then [{side: "hi", at: $at, out: true}]
+          elif $op == "<=" then
+            (if $parts == 3 then [{side: "hi", at: $at, out: false}] else [{side: "hi", at: $past, out: true}] end)
+          elif $op == "=" then
+            (if $parts == 3 then [{side: "lo", at: $at, out: false}, {side: "hi", at: $at, out: false}]
+             else [{side: "lo", at: $at, out: false}, {side: "hi", at: $past, out: true}] end)
+          elif $op == "^" then
+            (if $n[0] == 0 then null
+             else [{side: "lo", at: $at, out: false}, {side: "hi", at: [$n[0] + 1, 0, 0], out: true}] end)
+          else
+            [{side: "lo", at: $at, out: false},
+             {side: "hi", at: (if $parts == 1 then [$n[0] + 1, 0, 0] else [$n[0], $n[1] + 1, 0] end), out: true}]
+          end
+      end
+    end;
+
+# An engines range as a list of comparator sets joined by ||, or null when any
+# part of it cannot be read. A range kogut cannot read is never a conflict.
+def engine_sets:
+  gsub("(?<op>>=|<=|>|<|=|\\^|~)\\s+"; "\(.op)")
+  | split("||") | map(gsub("^\\s+|\\s+$"; ""))
+  | map(if . == "" then null
+        else [splits("\\s+") | comparator_bounds] | if any(.[]; . == null) then null else add // [] end end)
+  | if . == [] or any(.[]; . == null) then null else . end;
+
+# Whether a comparator set leaves any version between $lo and $hi.
+def set_allows($lo; $hi):
+  ([{at: $lo, out: false}] + map(select(.side == "lo")) | max_by([.at, .out])) as $l
+  | ([{at: $hi, out: false}] + map(select(.side == "hi")) | min_by([.at, (.out | not)])) as $h
+  | $l.at < $h.at or ($l.at == $h.at and ($l.out | not) and ($h.out | not));
+
+# A line's place in Node's release schedule on the given day.
+def node_phase($today):
+  if . == null then "unknown"
+  elif .end != null and $today >= .end then "eol"
+  elif .maintenance != null and $today >= .maintenance then "maintenance"
+  elif .lts != null and $today >= .lts then "active"
+  elif .start != null and $today >= .start then "current"
+  else "unknown" end;
+
+# The Node pin of one repository against the release schedule and its own
+# engines. Without the schedule, or when a file could not be read, kogut judges
+# nothing (`judged` is false), and an open issue stays open: it does not know
+# that the finding is gone. A line on maintenance is worth saying, but only a
+# line past its end of life or a pin outside engines is `flagged`. A repository
+# without a pin has nothing to judge.
+def runtime_signal($schedule):
+  (.runtime // {}) as $raw
+  | (now_ts | floor | todate | .[0:10]) as $today
+  | ($raw.pin | pin_line($schedule)) as $line
+  | (if $line == null or $schedule == null then null else $schedule["v\($line)"] end) as $entry
+  | ($entry | node_phase($today)) as $phase
+  | ($raw.engines // null) as $engines
+  | (if $engines == null then null else $engines | engine_sets end) as $sets
+  | ($schedule != null and $raw.read_error == false) as $judged
+  | (if $line == null or $sets == null then false
+     else ($raw.pin | pin_span($line)) as [$lo, $hi] | any($sets[]; set_allows($lo; $hi)) | not end) as $conflict
+  | {
+      file: ($raw.file // null),
+      pin: ($raw.pin // null),
+      line: $line,
+      phase: $phase,
+      since: (if $phase == "eol" then $entry.end elif $phase == "maintenance" then $entry.maintenance else null end),
+      active_lts: (if $schedule == null then null
+        else [$schedule | to_entries[] | select((.value | node_phase($today)) == "active")
+                | .key | ltrimstr("v") | tonumber?] | max end),
+      engines: $engines,
+      engines_readable: ($engines == null or $sets != null),
+      conflict: $conflict,
+      judged: $judged,
+      flagged: ($judged and ($phase == "eol" or $conflict))
+    };
+
 # What kogut tracks as issues, one per finding. The key stays the same from one
 # run to the next, so a finding's issue is updated instead of opened again, and
 # closed once the finding is gone. An `auto` finding gets its issue without the
@@ -395,6 +505,11 @@ def findings:
           title: "Repository hygiene gaps",
           facts: {issues: $r.hygiene_issues}}
        end),
+      ($r.runtime | select(.flagged)
+        | {key: "runtime:node", kind: "runtime", auto: true,
+           title: (if .phase == "eol" then "Runtime: Node \(.line) is past its end of life"
+                   else "Runtime: Node \(.line) in \(.file) is outside engines" end),
+           facts: {file, pin, line, phase, since, active_lts, engines, conflict}}),
       ([$r.dependabot_prs[] | select(.semver == "major") as $pr
           | [($pr.bump // empty), $pr.updates[]] | map(select(.semver == "major")) | unique_by(.package)[]
           | {name: (.package | major_name), version: "\(.package) \(.from) → \(.to)", pr: ($pr | {number, title, url})}]
@@ -439,6 +554,7 @@ def ci_action($w; $runs; $head_sha; $app):
     else null end;
 
 .policy as $p
+| .node_schedule as $node_schedule
 # kogut's GitHub App: its PRs are "app/<slug>", its commits "<slug>[bot]".
 | .owner as $owner
 | (.app // "kogut-agent") as $app
@@ -477,6 +593,7 @@ def ci_action($w; $runs; $head_sha; $app):
           action: (if .state == "disabled_inactivity" then
             {name: "enable", reason: "GitHub disabled it after 60 days without activity"} else null end)}],
         alerts: (.alerts.items | alert_summary),
+        runtime: runtime_signal($node_schedule),
         hygiene: {
           required_checks: $required,
           auto_merge: .repo.allow_auto_merge,

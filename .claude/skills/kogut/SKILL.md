@@ -42,6 +42,7 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 - `ci_failing[]`: active workflows whose latest completed runs on the default branch failed, `failing_streak` in a row. `ci_flaky[]`: failures within the window, but the latest run passed. `workflows_disabled[]`. A red or disabled workflow's `action` is what kogut may run for it (step 3).
 - `alerts`: `total`, `by_severity`, and `packages[]` worst first, each with its worst `severity`, `count`, `patched` versions and the `url` of its worst alert. The individual alerts are in `.kogut/state.json`.
 - `hygiene`, `hygiene_issues[]`.
+- `runtime`: the Node pin on the default branch (`pin`, `file`), its `line` and `phase` in Node's release schedule (`current`, `active`, `maintenance`, `eol`, or `unknown`), the date that phase began (`since`), the current Active LTS line (`active_lts`), `engines` from the root `package.json`, and whether the pin is outside it (`conflict`; a range kogut cannot read never is). `flagged` means the line is past its end of life or the pin is outside `engines`, and that is the finding. `judged` is false when the schedule or a file could not be read: nothing is flagged then, and an open issue stays open. A repository with no pin has nothing to judge.
 - `findings[]`: what kogut tracks as issues (step 4), each with a stable `key`, its `kind`, whether it is `auto`, a `title`, the `facts` and the `slug` of its diagnosis file.
 - `error`: collection failed for that repository. Report it and move on.
 
@@ -69,6 +70,7 @@ Spend effort where judgement is needed and stay brief elsewhere.
 - **The owner's PRs.** Do not review them. Mention a PR if it is red (which check, plus one line on why if the log makes it obvious) or stale.
 - **Alerts.** Give the counts by severity. Name the critical and high packages, each with the Dependabot PR whose `fixes[]` names it, if there is one.
 - **Hygiene.** List `hygiene_issues` as they are.
+- **Node runtime.** Report a `flagged` pin, and mention a line on `maintenance` with the Active LTS next to it; a line on maintenance does not change the block's status. A pin can be deliberate, for example the lowest release a project supports, so before you propose a change, read the repository's reasons with `./scripts/repo.sh` (its README, its docs, comments in its workflows). The fix is a change to files, so it goes through `/kogut fix <repo>`: propose it, do not write it in a sweep. If it would reverse a recorded decision, put the conflict to the owner instead.
 
 ### 3. Merge (not with `analyze`)
 
@@ -139,6 +141,7 @@ Needs you: …
 CI: …
 Issues: opened #12 (…), closed #9 (…)
 Hygiene: …
+Node: …
 TL;DR: …
 ```
 

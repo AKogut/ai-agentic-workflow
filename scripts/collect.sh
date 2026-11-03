@@ -28,6 +28,19 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Prints a file from a repository's default branch. Returns 1 when the file does
+# not exist and 2 when it could not be read, so a failed request cannot pass for
+# a missing file.
+branch_file() {
+  local full="$1" branch="$2" path="$3" err="$4" out
+  if out="$(gh api -H 'Accept: application/vnd.github.raw' "repos/$full/contents/$path?ref=$branch" 2>"$err")"; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  grep -q 'HTTP 404' "$err" && return 1
+  return 2
+}
+
 # Raw state of one repository, as JSON on stdout.
 collect_repo() {
   local repo="$1" full="$owner/$1" dir="$tmp/$1" branch id
@@ -151,6 +164,30 @@ collect_repo() {
     dependabot_config=true
   fi
 
+  # The Node pin on the default branch and the range the project declares. The
+  # rules about them are in signals.jq, which also needs to know a read failed:
+  # that says nothing about the pin, so it must not close an issue.
+  local pin="" pin_file="" engines="" read_error=false file content status
+  for file in .nvmrc .node-version; do
+    status=0
+    content="$(branch_file "$full" "$branch" "$file" "$dir/file.err")" || status=$?
+    if [ "$status" -eq 0 ]; then
+      pin_file="$file"
+      pin="$(awk '{ sub(/\r$/, "") } NF && $1 !~ /^#/ { print substr($1, 1, 40); exit }' <<<"$content")"
+      break
+    elif [ "$status" -ne 1 ]; then
+      read_error=true
+      break
+    fi
+  done
+  status=0
+  content="$(branch_file "$full" "$branch" package.json "$dir/file.err")" || status=$?
+  if [ "$status" -eq 0 ]; then
+    engines="$(jq -r '.engines.node? // empty | tostring' <<<"$content" 2>/dev/null)" || engines=""
+  elif [ "$status" -ne 1 ]; then
+    read_error=true
+  fi
+
   local local_clone=false path
   path="$(kogut_repo_path "$repo")"
   [ -d "$path/.git" ] && local_clone=true
@@ -169,6 +206,10 @@ collect_repo() {
     --argjson last_commit "$last_commit" \
     --argjson dependabot_config "$dependabot_config" \
     --argjson local_clone "$local_clone" \
+    --arg pin "$pin" \
+    --arg pin_file "$pin_file" \
+    --arg engines "$engines" \
+    --argjson read_error "$read_error" \
     '{
       name: $name,
       repo: ($repo[0] | {default_branch, pushed_at, html_url, allow_auto_merge, delete_branch_on_merge}
@@ -181,9 +222,20 @@ collect_repo() {
       tasks: $tasks[0],
       kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,
-      local_clone: {path: $path, present: $local_clone}
+      local_clone: {path: $path, present: $local_clone},
+      runtime: {
+        file: (if $pin_file == "" then null else $pin_file end),
+        pin: (if $pin == "" then null else $pin end),
+        engines: (if $engines == "" then null else $engines end),
+        read_error: $read_error
+      }
     }'
 }
+
+# Node's release schedule, once per run. null when it cannot be read, and then
+# signals.jq judges no pin.
+node_schedule="$(api_or null -H 'Accept: application/vnd.github.raw' repos/nodejs/Release/contents/schedule.json)"
+jq -e 'type == "object"' <<<"$node_schedule" >/dev/null 2>&1 || node_schedule=null
 
 # One background job per repository. A repository that fails to collect is
 # recorded with its error instead of aborting the whole sweep.
@@ -202,7 +254,8 @@ done
 state="${KOGUT_STATE:-$KOGUT_ROOT/.kogut/state.json}"
 mkdir -p "$(dirname "$state")"
 for r in "${repos[@]}"; do cat "$tmp/$r.json"; done |
-  jq -s --arg owner "$owner" --slurpfile config "$KOGUT_CONFIG" \
-    '{generated_at: (now | todate), owner: $owner, app: $config[0].app.slug, policy: $config[0].policy, repos: .}' >"$state"
+  jq -s --arg owner "$owner" --slurpfile config "$KOGUT_CONFIG" --argjson schedule "$node_schedule" \
+    '{generated_at: (now | todate), owner: $owner, app: $config[0].app.slug, policy: $config[0].policy,
+      node_schedule: $schedule, repos: .}' >"$state"
 
 jq -c -f "$KOGUT_ROOT/scripts/signals.jq" "$state"
