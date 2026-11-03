@@ -148,6 +148,14 @@ collect_repo() {
     echo '{"status": "unavailable", "items": []}' >"$dir/alerts.json"
   fi
 
+  # The repository's Actions secrets: names and dates, which is all GitHub ever
+  # returns. api_or drops a partial answer and marks a failed read, so it cannot
+  # pass for a repository with no secrets. --jq runs once per page.
+  api_or '{"status": "unavailable", "items": []}' --paginate "repos/$full/actions/secrets?per_page=100" \
+    --jq '{status: "ok", items: [.secrets[] | {name, updated_at}]}' |
+    jq -s '{status: (if length > 0 and all(.[]; .status == "ok") then "ok" else "unavailable" end),
+            items: (map(.items) | add // [])}' >"$dir/secrets.json"
+
   # Every branch, with its tip and the PRs that had it as their head, newest
   # first, which is what the pruning rule in signals.jq reads. Paginated, so a
   # repository with more than 100 branches is read in full, and about 2,200
@@ -253,6 +261,7 @@ collect_repo() {
     --slurpfile required "$dir/required.json" \
     --slurpfile alerts "$dir/alerts.json" \
     --slurpfile branches "$dir/branches.json" \
+    --slurpfile secrets "$dir/secrets.json" \
     --slurpfile tasks "$dir/tasks.json" \
     --slurpfile kogut_issues "$dir/kogut-issues.json" \
     --argjson last_commit "$last_commit" \
@@ -274,6 +283,7 @@ collect_repo() {
       required_checks_unread: $required_unread,
       alerts: $alerts[0],
       branches: $branches[0],
+      secrets: $secrets[0],
       tasks: $tasks[0],
       kogut_issues: $kogut_issues[0],
       dependabot_config: $dependabot_config,

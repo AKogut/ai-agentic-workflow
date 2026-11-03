@@ -519,6 +519,27 @@ def runtime_signal($schedule):
       flagged: ($judged and ($phase == "eol" or $conflict))
     };
 
+# The repository's Actions secrets by age, oldest first. GitHub gives names and
+# dates, never a value or an expiry, so age is all kogut can go by: at
+# policy.secret_warn_days a token is old enough that it may have expired, early
+# enough to warn before a 90-day one runs out. policy.secret_ignore names the
+# ones that do not expire. Without a list (`status` is not "ok") kogut knows
+# nothing about them, which says neither that they are fine nor that they are not.
+def secrets_signal($p):
+  (.secrets // {status: "unavailable", items: []}) as $s
+  # A snapshot from before the setting existed still gets the default.
+  | ($p.secret_warn_days // 80) as $warn
+  | ($p.secret_ignore // []) as $ignore
+  | {
+      status: $s.status,
+      warn_days: $warn,
+      items: ([$s.items[]
+        | (.updated_at | if . then days_since else null end) as $age
+        | {name, updated_at, age_days: $age,
+           stale: ($age >= $warn and (.name | IN($ignore[]) | not))}]
+        | sort_by(-(.age_days // 0), .name))
+    };
+
 # What kogut tracks as issues, one per finding. The key stays the same from one
 # run to the next, so a finding's issue is updated instead of opened again, and
 # closed once the finding is gone. An `auto` finding gets its issue without the
@@ -559,6 +580,14 @@ def findings:
            title: (if .phase == "eol" then "Runtime: Node \(.line) is past its end of life"
                    else "Runtime: Node \(.line) in \(.file) is outside engines" end),
            facts: {file, pin, line, phase, since, active_lts, engines, conflict}}),
+      ([$r.secrets.items[] | select(.stale)] as $stale
+        | if $stale == [] then empty else
+            {key: "secrets:age", kind: "secrets", auto: true,
+             title: (if ($stale | length) == 1
+                     then "Secrets: \($stale[0].name) is old enough that it may have expired"
+                     else "Secrets: \($stale | length) secrets are old enough that they may have expired" end),
+             facts: {warn_days: $r.secrets.warn_days, secrets: ($stale | map({name, updated_at, age_days}))}}
+          end),
       ([$r.dependabot_prs[] | select(.semver == "major") as $pr
           | [($pr.bump // empty), $pr.updates[]] | map(select(.semver == "major")) | unique_by(.package)[]
           | {name: (.package | major_name), version: "\(.package) \(.from) → \(.to)", pr: ($pr | {number, title, url})}]
@@ -645,6 +674,7 @@ def ci_action($w; $runs; $head_sha; $app):
         alerts: ((.alerts.items | alert_summary)
           + {uncovered: ([.prs[] | select(.author.login == "app/dependabot")] | uncovered_packages($r.alerts.items // []))}),
         runtime: runtime_signal($node_schedule),
+        secrets: secrets_signal($p),
         hygiene: {
           required_checks: $required,
           auto_merge: .repo.allow_auto_merge,

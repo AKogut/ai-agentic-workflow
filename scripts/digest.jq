@@ -6,8 +6,9 @@
 # branch is red or there is a critical or high alert, yellow when something
 # waits for the owner or for a /kogut run, green otherwise. A Node line on
 # maintenance is only mentioned; past its end of life or outside engines, it
-# makes the report yellow. PRs and issues show as numbers, without their titles,
-# so no text from anyone else reaches a channel.
+# makes the report yellow, and so does a secret old enough that it may have
+# expired. PRs and issues show as numbers, without their titles, so no text from
+# anyone else reaches a channel.
 
 def link: "[#\(.number)](\(.url))";
 def links: map(link) | join(", ");
@@ -35,6 +36,7 @@ def report:
     | [.workflows_disabled[] | select(.action != null)] as $disabled
     | (.alerts.by_severity // {}) as $s
     | (.runtime // {}) as $rt
+    | [(.secrets.items // [])[] | select(.stale)] as $old_secrets
     | ([(if $rt.phase == "eol" then "past its end of life"
          elif $rt.phase == "maintenance" then "on maintenance" else empty end),
         (if $rt.conflict and $rt.judged then "outside `engines` `\($rt.engines)`" else empty end)] | join(", ")) as $node
@@ -53,6 +55,11 @@ def report:
         line("Hygiene"; .hygiene_issues | join("; ")),
         line("Node"; if $node == "" then "" else "`\($rt.pin)` in `\($rt.file)`, \($node)."
           + (if $rt.active_lts then " Active LTS: \($rt.active_lts)." else "" end) end),
+        line("Old secrets"; if $old_secrets == [] then "" else
+          ($old_secrets | map("`\(.name)`, \(.age_days) days") | join("; "))
+          + (if ($old_secrets | length) == 1 then ": old enough that it may have expired."
+             else ": old enough that they may have expired." end) end),
+        line("Secrets"; if .secrets.status == "unavailable" then "could not be read." else "" end),
         line("In cooldown"; if $waiting == [] then "" else plural($waiting | length; "PR") end),
         line("Merged branches to prune"; (.branches.prunable // []) | length | if . == 0 then "" else tostring end)
       ] as $lines
@@ -60,12 +67,12 @@ def report:
         name,
         status: (
           if $red != [] or (($s.critical // 0) + ($s.high // 0)) > 0 then "red"
-          elif ($ready + $stuck + $for_owner + $for_kogut + $tasks + $answered + $stale + $disabled) != []
+          elif ($ready + $stuck + $for_owner + $for_kogut + $tasks + $answered + $stale + $disabled + $old_secrets) != []
             or .hygiene_issues != [] or $rt.flagged == true then "yellow"
           else "green" end),
         text: (["*Daily digest: read-only, nothing was changed.*"]
           + (if ($lines | map(select(
-                 (startswith("**In cooldown") or startswith("**Merged branches")
+                 (startswith("**In cooldown") or startswith("**Merged branches") or startswith("**Secrets:")
                    or (startswith("**Node") and $rt.flagged != true)) | not))) == []
              then ["Nothing needs you."] else [] end)
           + $lines | join("\n"))

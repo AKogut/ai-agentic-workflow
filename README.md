@@ -94,6 +94,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Decision | Why |
 |---|---|
 | Runs locally in Claude Code, on demand | It runs on my Claude subscription and needs no API key or server. Approvals stay interactive. |
+| Secrets go by age, and only by age | GitHub gives a secret's name and date, never its value or expiry. A token that runs out shows up only when a release fails, as flakemetry's did at 98 days. kogut warns at 80 days, says the secret may have expired, and leaves rotating it to me. |
 | A failed read never closes a Node runtime issue | Without the release schedule or the repository's files, kogut cannot tell whether the finding is gone, so it flags nothing and keeps the issue. |
 | A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
@@ -194,6 +195,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Daily digest:** each repository's state in its channel every morning, without the model
 - [x] **Node runtime:** each repository's Node pin checked against Node's release schedule and its own `engines`
 - [x] **Alert dismissals:** one package's alerts dismissed with a recorded reason, only when I ask, and never a critical one
+- [x] **Old secrets:** an Actions secret old enough that it may have expired gets an issue, from its name and date alone
 - [x] **Pruning branches:** a branch goes only when its tip is exactly the head of a PR merged into the default branch, by `kogut-agent[bot]`, and only the ones I name in the approval
 
 ## License
