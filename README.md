@@ -144,6 +144,7 @@ scripts/dependabot-command.sh   @dependabot rebase or recreate, only where the r
 scripts/run-workflow.sh         rerun, dispatch or enable a workflow as the rules name it, or run one on a PR's branch
 scripts/dismiss-alert.sh        dismisses one package's alerts with a recorded reason, when I ask for it
 scripts/dismiss.jq              what may be dismissed: never a critical alert, never one a PR is fixing
+scripts/prune-branches.sh       deletes named branches the rules call merged; prints how to restore them
 scripts/progress.sh             what kogut did over a window, next to the owner; read-only
 scripts/progress.jq             the counting and the markdown behind /kogut progress
 scripts/issues.sh               one issue per finding: opened, updated, closed by the App
@@ -193,6 +194,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Daily digest:** each repository's state in its channel every morning, without the model
 - [x] **Node runtime:** each repository's Node pin checked against Node's release schedule and its own `engines`
 - [x] **Alert dismissals:** one package's alerts dismissed with a recorded reason, only when I ask, and never a critical one
+- [x] **Pruning branches:** a branch goes only when its tip is exactly the head of a PR merged into the default branch, by `kogut-agent[bot]`, and only the ones I name in the approval
 
 ## License
 

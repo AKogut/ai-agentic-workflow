@@ -98,6 +98,51 @@ check "Dependabot refusing the App is neither an answer about the PR nor a comma
   'pr("epsilon"; 70) | .command.name == "rebase" and .dependabot_note == null and .asked == null'
 
 echo
+echo "branches to prune"
+branches="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixtures/branches.json)"
+b_helpers='def b: .repos[0].branches; def kept($n): b.kept[] | select(.name == $n);'
+b_check() { check "$1" "$b_helpers $2" "$branches"; }
+b_check "a branch whose tip is the head of a merged PR can go, and says which" \
+  'b.prunable[] | select(.name == "merged") == {name: "merged", tip: "b1", pr: 11, merged_into: "main"}'
+b_check "a reused name matches the merged PR with its tip, not an older one" \
+  'b.prunable[] | select(.name == "reused") | .pr == 13'
+b_check "only those two are prunable" \
+  '[b.prunable[].name] == ["merged", "reused"]'
+b_check "every branch lands in exactly one list" \
+  '(b.prunable | length) + (b.kept | length) == 15 and b.status == "ok"'
+b_check "the default branch stays, even at the head of a merged PR" 'kept("main").kind == "default"'
+b_check "a protected branch stays" 'kept("protected").kind == "protected"'
+b_check "a merge into another branch keeps it: that work may never land" \
+  'kept("merged-elsewhere") | .kind == "merged-elsewhere" and (.reason | contains("into feature/stack"))'
+b_check "commits after the merge keep a branch" \
+  'kept("later-commits") | .kind == "later-commits" and (.reason | contains("#14"))'
+b_check "a branch with no PR stays, such as flakemetry docs-snapshots" \
+  '(kept("no-pr").kind == "no-pr") and (kept("docs-snapshots").kind == "no-pr")'
+b_check "a PR closed without merging keeps its branch" 'kept("closed").kind == "not-merged"'
+b_check "an open PR with it as head keeps a merged branch, from either list" \
+  '(kept("open-head").reason == "head of open PR #2") and (kept("open-head-unlisted").reason == "head of open PR #19")'
+b_check "an open PR with it as base keeps a merged branch" 'kept("open-base").reason == "base of open PR #3"'
+b_check "a merge from a fork does not count" 'kept("fork-merged").kind != null and ([b.prunable[].name] | index("fork-merged") == null)'
+b_check "a branch without a readable tip stays" 'kept("no-tip").kind != null'
+b_check "an open Dependabot branch stays" 'kept("dependabot/npm_and_yarn/x-1.0.1").reason == "head of open PR #1"'
+over_limit="$(jq '.repos[0].prs += [range(0; 100) | {number: (1000 + .), title: "x", author: {login: "example"}, isDraft: false, createdAt: "2026-10-20T12:00:00Z", statusCheckRollup: [], headRefName: "h\(.)", baseRefName: "main"}]' tests/fixtures/branches.json |
+  KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "over 100 open PRs, nothing is prunable" \
+  '.repos[0].branches | .prunable == [] and (.kept[] | select(.name == "merged") | .kind == "unread")' "$over_limit"
+check "branches that could not be read leave nothing prunable" \
+  '.repos[0].branches == {status: "unavailable", prunable: [], kept: []}' \
+  "$(jq '.repos[0].branches = {status: "unavailable", items: []}' tests/fixtures/branches.json | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+check "a snapshot without branches leaves nothing prunable" \
+  '.repos[0].branches == {status: "unavailable", prunable: [], kept: []}' \
+  "$(jq 'del(.repos[0].branches)' tests/fixtures/branches.json | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+b_digest="$(jq -c -f scripts/digest.jq <<<"$branches")"
+check "the digest counts prunable branches" \
+  '.[0].text | contains("**Merged branches to prune:** 2")' "$b_digest"
+quiet_with_branches="$(jq -cn '{repos: [{name: "r", url: "https://example/r", ci_failing: [], dependabot_prs: [], kogut_prs: [], tasks: [], other_prs: [], workflows_disabled: [], hygiene_issues: [], branches: {status: "ok", prunable: [{name: "x"}], kept: []}}]}' | jq -c -f scripts/digest.jq)"
+check "prunable branches do not change the colour or ask for anything" \
+  '.[0] | .status == "green" and (.text | contains("Nothing needs you.") and contains("**Merged branches to prune:** 1"))' "$quiet_with_branches"
+
+echo
 echo "version bumps"
 check "patch, minor and major are read from the title" \
   '[pr("alpha"; 1, 4, 2) | .bump.semver] == ["patch", "minor", "major"]'

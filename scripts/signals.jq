@@ -338,6 +338,40 @@ def other_pr($p):
       stale: ($age >= $p.stale_pr_days)
     };
 
+# Which branches can go. Squash merges are the norm, so git cannot tell what is
+# merged: a branch is prunable only when its tip is exactly the head of a PR from
+# this repository merged into the default branch, so a commit added after the
+# merge keeps it, and so does a merge into another branch that may never land.
+# It must not be the default branch or protected, and no open PR may use it as
+# head or base. gh pr list reads 100 open PRs; past that one could go unseen, so nothing
+# is prunable. Everything else is kept with its reason: a branch with no PR, an
+# unmerged one or one with later commits is the owner's work.
+def branch_report($r):
+  ($r.branches // {status: "unavailable", items: []}) as $b
+  | (($r.prs | length) < 100) as $all_open
+  | [$b.items[] | . as $x
+      | [$r.prs[] | select(.headRefName == $x.name) | .number] as $open_prs
+      | ($open_prs + [$x.prs[] | select(.state == "OPEN") | .number] | unique) as $open_head
+      | [$r.prs[] | select(.baseRefName == $x.name) | .number] as $open_base
+      | [$x.prs[] | select(.state == "MERGED" and (.cross | not))] as $merged
+      | ([$merged[] | select($x.tip != null and .head == $x.tip)] | first) as $match
+      | ($match != null and $match.base == $r.repo.default_branch) as $landed
+      | if $x.name == $r.repo.default_branch then {name, kind: "default", reason: "the default branch"}
+        elif $x.protected then {name, kind: "protected", reason: "protected by a rule"}
+        elif $open_head != [] then {name, kind: "open-pr", reason: "head of open PR #\($open_head[0])"}
+        elif $open_base != [] then {name, kind: "open-pr", reason: "base of open PR #\($open_base[0])"}
+        elif ($all_open | not) then {name, kind: "unread", reason: "over 100 open PRs, so one could use it unseen"}
+        elif $landed then {name, tip, pr: $match.number, merged_into: $match.base}
+        elif $match then {name, kind: "merged-elsewhere", reason: "PR #\($match.number) merged it into \($match.base), not the default branch"}
+        elif $merged != [] then {name, kind: "later-commits", reason: "its tip is not the head of merged PR #\($merged[0].number)"}
+        elif $x.prs != [] then {name, kind: "not-merged", reason: "no merged PR from this repository (see PR #\($x.prs[0].number))"}
+        else {name, kind: "no-pr", reason: "no PR"} end]
+  | {
+      status: $b.status,
+      prunable: map(select(.kind == null)),
+      kept: map(select(.kind != null))
+    };
+
 # Open Dependabot alerts, summed by severity and grouped per package, worst
 # first: one repository can carry a hundred alerts for a dozen packages. The
 # individual alerts stay in the snapshot.
@@ -576,6 +610,7 @@ def ci_action($w; $runs; $head_sha; $app):
             + dependabot_command($owner; $r.repo.last_commit_at)] | split_majors),
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
+        branches: branch_report($r),
         ci_failing: [$active[] | select(.health.streak > 0) | {
           id, name, path,
           action: ci_action(.; $r.runs[.id | tostring] // []; $r.repo.head_sha; $app),

@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-10-30T12:00:00Z",
+  "owner": "example",
+  "app": "kogut-agent",
+  "policy": { "cooldown_days": 3, "cooldown_skip_severity": "high", "stale_pr_days": 7, "inactivity_warn_days": 45, "run_window": 30, "followup_limit": 3 },
+  "repos": [
+    {
+      "name": "zeta",
+      "repo": { "default_branch": "main", "html_url": "https://github.com/example/zeta", "allow_auto_merge": true, "delete_branch_on_merge": true, "pushed_at": "2026-10-30T00:00:00Z", "last_commit_at": "2026-10-30T00:00:00Z", "head_sha": "aaaa" },
+      "prs": [
+        { "number": 1, "title": "chore(deps): bump x from 1.0.0 to 1.0.1", "body": "", "author": { "login": "app/dependabot" }, "isDraft": false, "createdAt": "2026-10-20T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "statusCheckRollup": [], "headRefName": "dependabot/npm_and_yarn/x-1.0.1", "headRefOid": "d1", "baseRefName": "main", "url": "https://github.com/example/zeta/pull/1", "comments": [] },
+        { "number": 2, "title": "feat: mine", "body": "", "author": { "login": "example" }, "isDraft": false, "createdAt": "2026-10-20T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "statusCheckRollup": [], "headRefName": "open-head", "headRefOid": "o1", "baseRefName": "main", "url": "https://github.com/example/zeta/pull/2" },
+        { "number": 3, "title": "feat: stacked", "body": "", "author": { "login": "example" }, "isDraft": false, "createdAt": "2026-10-20T12:00:00Z", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN", "statusCheckRollup": [], "headRefName": "stacked", "headRefOid": "s1", "baseRefName": "open-base", "url": "https://github.com/example/zeta/pull/3" }
+      ],
+      "workflows": [],
+      "runs": {},
+      "required_checks": ["ci"],
+      "alerts": { "status": "ok", "items": [] },
+      "tasks": [],
+      "kogut_issues": [],
+      "dependabot_config": true,
+      "local_clone": { "path": "/tmp/zeta", "present": true },
+      "branches": {
+        "status": "ok",
+        "items": [
+          { "name": "main", "protected": false, "tip": "m1", "prs": [{ "number": 10, "state": "MERGED", "head": "m1", "base": "develop", "cross": false }] },
+          {"name": "merged-elsewhere", "protected": false, "tip": "b1", "prs": [{"number": 77, "state": "MERGED", "head": "b1", "base": "feature/stack", "cross": false}]},
+        { "name": "merged", "protected": false, "tip": "b1", "prs": [{ "number": 11, "state": "MERGED", "head": "b1", "base": "main", "cross": false }] },
+          { "name": "reused", "protected": false, "tip": "r2", "prs": [{ "number": 12, "state": "MERGED", "head": "r1", "base": "main", "cross": false }, { "number": 13, "state": "MERGED", "head": "r2", "base": "main", "cross": false }] },
+          { "name": "later-commits", "protected": false, "tip": "l2", "prs": [{ "number": 14, "state": "MERGED", "head": "l1", "base": "main", "cross": false }] },
+          { "name": "no-pr", "protected": false, "tip": "n1", "prs": [] },
+          { "name": "closed", "protected": false, "tip": "c1", "prs": [{ "number": 15, "state": "CLOSED", "head": "c1", "base": "main", "cross": false }] },
+          { "name": "protected", "protected": true, "tip": "p1", "prs": [{ "number": 16, "state": "MERGED", "head": "p1", "base": "main", "cross": false }] },
+          { "name": "open-head", "protected": false, "tip": "o1", "prs": [{ "number": 17, "state": "MERGED", "head": "o1", "base": "main", "cross": false }] },
+          { "name": "open-head-unlisted", "protected": false, "tip": "u1", "prs": [{ "number": 18, "state": "MERGED", "head": "u1", "base": "main", "cross": false }, { "number": 19, "state": "OPEN", "head": "u1", "base": "main", "cross": false }] },
+          { "name": "open-base", "protected": false, "tip": "q1", "prs": [{ "number": 20, "state": "MERGED", "head": "q1", "base": "main", "cross": false }] },
+          { "name": "fork-merged", "protected": false, "tip": "f1", "prs": [{ "number": 21, "state": "MERGED", "head": "f1", "base": "main", "cross": true }] },
+          { "name": "no-tip", "protected": false, "tip": null, "prs": [{ "number": 22, "state": "MERGED", "head": null, "base": "main", "cross": false }] },
+          { "name": "dependabot/npm_and_yarn/x-1.0.1", "protected": false, "tip": "d1", "prs": [{ "number": 1, "state": "OPEN", "head": "d1", "base": "main", "cross": false }] },
+          { "name": "docs-snapshots", "protected": false, "tip": "s9", "prs": [] }
+        ]
+      }
+    }
+  ]
+}
