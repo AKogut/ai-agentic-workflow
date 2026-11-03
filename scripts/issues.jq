@@ -29,6 +29,9 @@ def facts:
         else "not in the release schedule" end)
     + (if $f.active_lts then "\n- Active LTS: Node \($f.active_lts)" else "" end)
     + (if $f.engines then "\n- `engines.node`: `\($f.engines)`" + (if $f.conflict then ", which the pin does not satisfy" else "" end) else "" end)
+  elif .kind == "secrets" then
+    ([.facts.secrets[] | "- `\(.name)`: last set on \(.updated_at[0:10]), \(.age_days) days ago"] | join("\n"))
+    + "\n- GitHub does not say when a secret expires, so this goes by age: from \(.facts.warn_days) days, a token is old enough that it may have expired."
   else "" end;
 
 # The issue body: the model's diagnosis, the facts, a footer, and the key that
@@ -56,6 +59,7 @@ def closing($today):
      elif $kind == "hygiene" then "no hygiene gaps are left."
      elif $kind == "major" then "no open Dependabot PR takes `\($what)` to a new major."
      elif $kind == "runtime" then "the Node pin is no longer past its end of life or outside `engines`."
+     elif $kind == "secrets" then "no secret is old enough that it may have expired."
      else "the finding is gone." end)
   + " Closing.";
 
@@ -67,7 +71,8 @@ def closing($today):
 #   keep    the issue already reads as it should
 #   skip    a major the model wrote nothing about
 #   close   an issue whose finding is gone. A runtime finding kogut could not
-#           judge this run is not gone, so its issue is kept.
+#           judge this run, or a secrets finding when the list could not be
+#           read, is not gone, so its issue is kept.
 def plan($d; $issues; $texts; $today; $home):
   [ ($d.findings[] as $f
       | ([$issues[] | select(.key == $f.key)][0]) as $i
@@ -82,7 +87,8 @@ def plan($d; $issues; $texts; $today; $home):
         else {action: "skip", title: $f.title, key: $f.key, slug: $f.slug} end),
     ($issues[] | select(.key != null) | . as $i
       | select([$d.findings[].key] | index($i.key) | not)
-      | if .key == "runtime:node" and ($d.runtime.judged | not)
+      | if (.key == "runtime:node" and ($d.runtime.judged | not))
+          or (.key == "secrets:age" and $d.secrets.status != "ok")
         then {action: "keep", number, title, url}
         else {action: "close", number, title, url, comment: closing($today)} end)
   ];

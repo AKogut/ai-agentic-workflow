@@ -499,6 +499,88 @@ check "without the schedule the digest says nothing about the pin" \
   '.[0] | .status == "green" and (.text | contains("**Node") | not)' "$(rt_digest "$rt_no_schedule")"
 
 echo
+echo "old secrets"
+sec_signals() { KOGUT_NOW=2026-11-03T12:00:00Z jq -c -f scripts/signals.jq; }
+sec_fixture=tests/fixtures/secrets.json
+sec_mixed="$(sec_signals <"$sec_fixture")"
+# The fixture's repository with only the named secrets left.
+sec_only() { jq -c --argjson names "$1" '.repos[0].secrets.items |= map(select(.name | IN($names[])))' "$sec_fixture" | sec_signals; }
+sec_one="$(sec_only '["OLD_PAT", "NEW_TOKEN"]')"
+sec_none_stale="$(sec_only '["NEW_TOKEN", "JUST_UNDER", "NEVER_EXPIRES"]')"
+sec_unavailable="$(jq -c '.repos[0].secrets = {status: "unavailable", items: []}' "$sec_fixture" | sec_signals)"
+sec_helpers='def item($n): .repos[0].secrets.items[] | select(.name == $n);
+  def no_finding: .repos[0] | all(.findings[]; .key != "secrets:age");'
+
+check "a secret is stale from the warning age, and not a second before it" \
+  "$sec_helpers"' [item("AT_THE_LIMIT"), item("JUST_UNDER")] | map([.age_days, .stale]) == [[80, true], [79, false]]' "$sec_mixed"
+check "an old secret is stale, and a new one is not" \
+  "$sec_helpers"' [item("OLD_PAT"), item("NEW_TOKEN")] | map([.age_days, .stale]) == [[98, true], [14, false]]' "$sec_mixed"
+check "a name the owner listed as not expiring is never stale" \
+  "$sec_helpers"' item("NEVER_EXPIRES") | .age_days > 300 and (.stale | not)' "$sec_mixed"
+check "a secret without a date is not stale and breaks nothing" \
+  "$sec_helpers"' item("NO_DATE") | .age_days == null and (.stale | not)' "$sec_mixed"
+check "the warning age comes from the policy" \
+  "$sec_helpers"' item("OLD_PAT") | .stale | not' \
+  "$(jq -c '.policy.secret_warn_days = 99' "$sec_fixture" | sec_signals)"
+check "a snapshot without the settings still warns at 80 days" \
+  "$sec_helpers"' .repos[0].secrets.warn_days == 80 and (item("NEVER_EXPIRES") | .stale)' \
+  "$(jq -c '.policy |= del(.secret_warn_days, .secret_ignore)' "$sec_fixture" | sec_signals)"
+check "secrets are listed oldest first, with names and dates only" \
+  '.repos[0].secrets | ([.items[].name] == ["NEVER_EXPIRES", "OLD_PAT", "AT_THE_LIMIT", "JUST_UNDER", "NEW_TOKEN", "NO_DATE"])
+     and all(.items[]; keys == ["age_days", "name", "stale", "updated_at"])' "$sec_mixed"
+check "a value that somehow reached the snapshot stays out of the digest" \
+  '.repos[0] | tojson | contains("hunter2") | not' \
+  "$(jq -c '.repos[0].secrets.items[0].value = "hunter2"' "$sec_fixture" | sec_signals)"
+check "one stale secret is a finding that names it and says it may have expired" \
+  '.repos[0].findings[] | select(.key == "secrets:age") | .auto and .kind == "secrets" and .slug == "secrets-age"
+     and .title == "Secrets: OLD_PAT is old enough that it may have expired"
+     and .facts == {warn_days: 80, secrets: [{name: "OLD_PAT", updated_at: "2026-07-28T10:58:29Z", age_days: 98}]}' "$sec_one"
+check "several stale secrets are one finding that counts them" \
+  '[.repos[0].findings[] | select(.key == "secrets:age")] | length == 1
+     and .[0].title == "Secrets: 2 secrets are old enough that they may have expired"
+     and ([.[0].facts.secrets[].name] == ["OLD_PAT", "AT_THE_LIMIT"])' "$sec_mixed"
+check "no stale secret, no finding" "$sec_helpers"' no_finding' "$sec_none_stale"
+check "a list that could not be read says so, and is no finding" \
+  "$sec_helpers"' (.repos[0].secrets == {status: "unavailable", warn_days: 80, items: []}) and no_finding' "$sec_unavailable"
+check "a snapshot without secrets counts as not read" \
+  "$sec_helpers"' (.repos[0].secrets.status == "unavailable") and no_finding' \
+  "$(jq -c '.repos[0] |= del(.secrets)' "$sec_fixture" | sec_signals)"
+
+sec_plan() {
+  jq -c -n -L scripts --argjson d "$(jq -c '.repos[0]' <<<"$1")" --argjson issues "$2" \
+    'include "issues"; plan($d; $issues; {}; "2026-11-03"; "https://example.com/kogut")'
+}
+sec_issue='[{"number": 6, "title": "Secrets: OLD_PAT is old enough that it may have expired", "url": "u6", "key": "secrets:age", "body": "old"}]'
+check "the issue's facts give each secret's date and age, and say it goes by age" \
+  '.[0] | .action == "open" and .key == "secrets:age" and (.body
+     | contains("- `OLD_PAT`: last set on 2026-07-28, 98 days ago\n- GitHub does not say when a secret expires, so this goes by age: from 80 days, a token is old enough that it may have expired.")
+       and contains("<!-- kogut-finding: secrets:age -->"))' "$(sec_plan "$sec_one" '[]')"
+check "an issue's text never says a secret has expired" \
+  '.[0] | [.title, .body] | all(.[]; gsub("may have expired"; "") | test("expired") | not)' "$(sec_plan "$sec_one" '[]')"
+check "the issue closes once nothing is stale, saying why" \
+  '.[0] | .action == "close" and .number == 6 and (.comment | contains("no secret is old enough that it may have expired"))' \
+  "$(sec_plan "$sec_none_stale" "$sec_issue")"
+check "the issue stays open when the list could not be read" \
+  '.[0] | .action == "keep" and .number == 6' "$(sec_plan "$sec_unavailable" "$sec_issue")"
+check "a failed read keeps only the secrets issue open" \
+  '.[0] | .action == "close" and .number == 7' \
+  "$(sec_plan "$sec_unavailable" '[{"number": 7, "title": "Repository hygiene gaps", "url": "u7", "key": "hygiene", "body": "old"}]')"
+
+sec_digest() { jq -c -f scripts/digest.jq <<<"$1"; }
+check "a stale secret makes the digest yellow and names it" \
+  '.[0] | .status == "yellow" and (.text | contains("**Old secrets:** `OLD_PAT`, 98 days: old enough that it may have expired.") and (contains("Nothing needs you.") | not))' \
+  "$(sec_digest "$sec_one")"
+check "several stale secrets read in the plural" \
+  '.[0].text | contains("**Old secrets:** `OLD_PAT`, 98 days; `AT_THE_LIMIT`, 80 days: old enough that they may have expired.")' \
+  "$(sec_digest "$sec_mixed")"
+check "secrets that are fine stay out of the digest" \
+  '.[0] | .status == "green" and (.text | contains("ecrets") | not) and (.text | contains("Nothing needs you."))' \
+  "$(sec_digest "$sec_none_stale")"
+check "a list that could not be read is mentioned, and changes nothing else" \
+  '.[0] | .status == "green" and (.text | contains("**Secrets:** could not be read.") and contains("Nothing needs you."))' \
+  "$(sec_digest "$sec_unavailable")"
+
+echo
 echo "progress report"
 check "kogut's merges are the PRs the App merged" \
   "$p_repo"' p("alpha") | .kogut.merged == 1' "$progress"
