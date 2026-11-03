@@ -34,6 +34,10 @@ check "a green patch past the cooldown is ready to merge" \
   'pr("alpha"; 1) | .ready_to_merge and .blockers == []'
 check "a PR younger than the cooldown is held back" \
   'pr("alpha"; 2) | (.ready_to_merge | not) and .blockers == ["younger than the 3-day cooldown"]'
+check "a branch run waits for the cooldown, unless the PR fixes a high alert" \
+  '[pr("alpha"; 1), pr("alpha"; 2), pr("delta"; 19), pr("delta"; 21) | .in_cooldown] == [false, true, false, true]'
+check "a Dependabot PR names its branch, for a run on it" \
+  'pr("alpha"; 2) | .branch == "dependabot/npm_and_yarn/opentelemetry/core-3.0.0"'
 check "red checks block the merge" \
   'pr("alpha"; 3) | .checks == "red" and .blockers == ["checks are red"]'
 check "a required check that never ran blocks a green PR" \
@@ -83,13 +87,15 @@ check "a PR someone else edited asks to be recreated" \
   'pr("epsilon"; 63) | .command.name == "recreate" and (.dependabot_note.text | startswith("Looks like this PR has been edited"))'
 check "when Dependabot says it cannot update, no command repeats it" \
   'pr("epsilon"; 64) | .command == null and (.dependabot_note.text | startswith("Dependabot cannot update"))'
-check "kogut asks once per head, and comments before the head are history" \
+check "a command goes out once per head, and comments before the head are history" \
   '(pr("epsilon"; 65) | .command == null and .asked == {command: "rebase", at: "2026-10-28T12:00:00Z"})
    and (pr("epsilon"; 66) | .command.name == "rebase" and .asked == null and .dependabot_note == null)'
 check "a red PR asks for a rebase only when the base has moved since it failed" \
   '[pr("epsilon"; 67, 68) | .command.name] == ["rebase", null]'
 check "a stranger cannot speak for Dependabot or for kogut" \
   'pr("epsilon"; 69) | .command.name == "rebase" and .dependabot_note == null and .asked == null'
+check "Dependabot refusing the App is neither an answer about the PR nor a command that counts" \
+  'pr("epsilon"; 70) | .command.name == "rebase" and .dependabot_note == null and .asked == null'
 
 echo
 echo "version bumps"

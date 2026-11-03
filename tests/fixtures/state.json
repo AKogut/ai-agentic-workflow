@@ -584,7 +584,7 @@
           "comments": [
             {
               "author": {
-                "login": "kogut-agent"
+                "login": "example"
               },
               "createdAt": "2026-10-28T12:00:00Z",
               "body": "@dependabot rebase"
@@ -617,7 +617,7 @@
           "comments": [
             {
               "author": {
-                "login": "kogut-agent"
+                "login": "example"
               },
               "createdAt": "2026-10-27T10:00:00Z",
               "body": "@dependabot rebase"
@@ -718,6 +718,46 @@
               },
               "createdAt": "2026-10-28T13:00:00Z",
               "body": "@dependabot recreate"
+            }
+          ]
+        },
+        {
+          "number": 70,
+          "title": "chore(deps): bump k-refused from 1.0.0 to 1.0.1",
+          "body": "Bumps k-refused from 1.0.0 to 1.0.1.",
+          "author": {
+            "login": "app/dependabot"
+          },
+          "isDraft": false,
+          "createdAt": "2026-10-20T12:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "BEHIND",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "headRefName": "dependabot/npm_and_yarn/k-refused-1.0.1",
+          "url": "https://github.com/example/epsilon/pull/70",
+          "head_committed_at": "2026-10-25T12:00:00Z",
+          "comments": [
+            {
+              "author": {
+                "login": "kogut-agent"
+              },
+              "createdAt": "2026-10-28T12:00:00Z",
+              "body": "@dependabot rebase"
+            },
+            {
+              "author": {
+                "login": "dependabot"
+              },
+              "createdAt": "2026-10-28T12:00:03Z",
+              "body": "Sorry, only users with push access can use that command."
             }
           ]
         }

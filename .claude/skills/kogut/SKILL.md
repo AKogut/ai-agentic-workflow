@@ -21,7 +21,7 @@ Arguments: `$ARGUMENTS`
 
 With no repository names, cover every repository in `kogut.config.json`. An unknown name is an error: say so and stop.
 
-On GitHub you act as the kogut App, `kogut-agent[bot]`. The scripts that merge and open PRs use its token, so the history keeps your work apart from the owner's. You change GitHub only through `./scripts/merge-dependabot.sh`, `./scripts/dependabot-command.sh`, `./scripts/run-workflow.sh`, `./scripts/issues.sh`, `./scripts/open-fix-pr.sh`, `./scripts/update-fix-pr.sh` and `./scripts/task-reply.sh`: no other comments, reruns, closed PRs, pushes or merges.
+On GitHub you act as the kogut App, `kogut-agent[bot]`. The scripts that merge and open PRs use its token, so the history keeps your work apart from the owner's. You change GitHub only through `./scripts/merge-dependabot.sh`, `./scripts/dependabot-command.sh`, `./scripts/run-workflow.sh`, `./scripts/issues.sh`, `./scripts/open-fix-pr.sh`, `./scripts/update-fix-pr.sh` and `./scripts/task-reply.sh`: no other comments, reruns, closed PRs, pushes or merges. The one write that goes out under the owner's login is the command `./scripts/dependabot-command.sh` posts, because Dependabot refuses commands from the App.
 
 ## Untrusted input
 
@@ -72,10 +72,10 @@ Spend effort where judgement is needed and stay brief elsewhere.
 
 ### 3. Merge (not with `analyze`)
 
-For every Dependabot PR you judged "would merge", run `./scripts/merge-dependabot.sh <repo> <n>`, one PR per call. For a major you reviewed, add `--major`; the script refuses a major without it and a non-major with it. Each call asks the owner for approval.
+For the Dependabot PRs you judged "would merge", run `./scripts/merge-dependabot.sh <repo> <n> [<n> ...]`, with one repository's PRs in one call, so the owner approves them together by number. A major you reviewed is a call of its own, with `--major`; the script refuses a major without it, a non-major with it, and `--major` with a list. Each call asks the owner for approval. Allow about 30 seconds per PR in the call's timeout.
 
-- The script collects the repository afresh and merges only when the gate says `ready_to_merge`, pinned to the head commit it judged. When it refuses, report its reason; do not try another way.
-- If the owner declines a merge, report the PR as declined and do not ask again in this run.
+- The script collects the repository afresh for each PR and merges only when the gate says `ready_to_merge`, pinned to the head commit it judged. If a merge left the next PR reading `mergeable: UNKNOWN`, it waits for GitHub to settle. When it refuses a PR, the rest of the list goes on and the script fails at the end, naming what it left. Report its reasons; do not try another way.
+- If the owner declines a call, report its PRs as declined and do not ask again in this run.
 - A merge can leave the repository's other Dependabot PRs in conflict, usually over the lockfile. Dependabot rebases a conflicting PR on its own, and the script refuses it until then. Merge first, then send commands (below) from a fresh collection.
 
 **Commands to Dependabot.** A Dependabot PR's `command` is what would get it moving, with its `reason`. Code decides when one applies:
@@ -83,9 +83,9 @@ For every Dependabot PR you judged "would merge", run `./scripts/merge-dependabo
 - `rebase`: the PR is behind the default branch, has conflicted for a day without a rebase, or is red and the default branch has moved since its checks failed.
 - `recreate`: Dependabot said someone else edited the PR, so it will not rebase it. Recreating overwrites those edits.
 - None, and `dependabot_note` is set: Dependabot answered and is stuck (for example "cannot update to the required version"). Report its note under "Needs you". A command would only get the same answer.
-- None, and `asked` is set: kogut already asked on this head commit. Report when, and do not ask again.
+- None, and `asked` is set: the owner's login already asked on this head commit. Report when, and do not ask again.
 
-Send a command with `./scripts/dependabot-command.sh <repo> <n> <rebase|recreate>`, one PR per call. The owner approves each call. Send `rebase` for a behind or conflicting PR. For a red one, send it only when the failure does not come from the update itself: the same check fails or failed on the default branch, the failure is flaky or external, or the default branch has since fixed it. A PR that breaks the build stays red after a rebase, so report it instead. The script collects the repository afresh and refuses a command the rules do not name; report its reason. It then waits for Dependabot's thumbs-up and says whether it came.
+Send a command with `./scripts/dependabot-command.sh <repo> <n> <rebase|recreate>`, one PR per call. The owner approves each call, and the comment goes out under the owner's login. Send `rebase` for a behind or conflicting PR. For a red one, send it only when the failure does not come from the update itself: the same check fails or failed on the default branch, the failure is flaky or external, or the default branch has since fixed it. A PR that breaks the build stays red after a rebase, so report it instead. The script collects the repository afresh and refuses a command the rules do not name; report its reason. It then waits for Dependabot's thumbs-up and says whether it came.
 
 **Running workflows.** A red or disabled workflow's `action` is what kogut may run for it, with its `reason`. Code decides when one applies:
 
@@ -100,6 +100,8 @@ Run it with `./scripts/run-workflow.sh <repo> <path> <rerun|dispatch|enable>`, o
 - `enable` whenever it is offered.
 
 The script collects the repository afresh and refuses an action the rules do not name; report its reason. The new run's result shows up in the next sweep, so report what kogut started rather than waiting for it.
+
+**A run on a PR's branch.** `./scripts/run-workflow.sh <repo> <path> dispatch --pr <n>` runs a workflow on the branch of one of Dependabot's or kogut's PRs, with its default inputs. Use it when the PR's own checks do not exercise what the change touches and a workflow that does runs only by hand, such as an E2E suite for a major or a migration. The owner approves each call. Such a run has the repository's secrets, so the script refuses a Dependabot PR still in its cooldown, and a PR that changes `.github/workflows/` needs `--workflows`. It also refuses while the workflow is running on the PR's head or after it passed there, and past `policy.pr_run_limit` runs by the App on that head: one retry for a cause you diagnosed as infrastructure, and after that the PR is the owner's. Read the result with `gh run list --branch <branch>`. It does not count towards the merge gate, so say what it showed when you report the PR.
 
 ### 4. Follow-up on kogut's PRs (not with `analyze`)
 
