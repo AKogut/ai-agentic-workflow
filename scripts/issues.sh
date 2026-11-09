@@ -98,7 +98,7 @@ for repo in $names; do
     (
       export GH_TOKEN="$token"
       kogut_ensure_label "$full" kogut-task 0e8a16 "A task for kogut, the maintenance agent; only the owner's label counts"
-      if kogut_feature_enabled "$name"; then
+      if kogut_feature_enabled "$repo"; then
         kogut_ensure_label "$full" kogut-feature 1d76db "A feature for kogut to plan; only the owner's label counts"
       fi
       if jq -e 'any(.[]; .action == "open")' <<<"$plan" >/dev/null; then
