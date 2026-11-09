@@ -766,6 +766,12 @@ check "one job with an unexplained failure leaves the whole run unknown" \
 check "a job that was not read leaves the whole run unknown" \
   '. == {kind: "unknown", signature: null}' \
   "$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": [], "log": null}]}')"
+check "a release token its own workflow found refused reads as credentials" \
+  '. == {kind: "credentials", signature: "release-token-rejected"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Process completed with exit code 1.", "GitHub answered 401. No version pull request can open until it is rotated: gh secret set RELEASE_PAT"], "log": null}]}')"
+check "the same check answering anything but 401 says nothing about the token" \
+  '. == {kind: "unknown", signature: null}' \
+  "$(cause_of '{"jobs": [{"errors": ["GitHub answered 503. No version pull request can open until it is rotated: gh secret set RELEASE_PAT"], "log": null}]}')"
 check "a refused token outranks every other job" \
   '. == {kind: "credentials", signature: "github-bad-credentials"}' \
   "$(cause_of '{"jobs": [{"errors": [], "log": "BUILD FAILED\n"}, {"errors": ["Bad credentials - https://docs.github.com/rest"], "log": null}]}')"
