@@ -32,7 +32,20 @@ def signatures: [
    pattern: "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized"},
   # restful Report, 41429170737: the live demo answered 500 until the wait ran out.
   {name: "live-platform-not-ready", kind: "external", in: "log",
-   pattern: "Restful Booker Platform is not ready after [0-9]+ attempts"}
+   pattern: "Restful Booker Platform is not ready after [0-9]+ attempts"},
+  # mobile Nightly E2E, 42468767207: the Gradle wrapper got a 504 from Gradle's
+  # distribution server. Only a 5xx: a wrong version answers 404, and that is a bug.
+  {name: "gradle-download-5xx", kind: "external", in: "errors",
+   pattern: "^Exception in thread \"main\" java\\.io\\.IOException: Server returned HTTP response code: 5[0-9]{2} for URL: https://services\\.gradle\\.org/"},
+  # mobile Nightly E2E, 42468767207 (ruby/setup-ruby), and restful Performance,
+  # 42476973322 (grafana/setup-k6): a release download still answered 504 after
+  # the action's own retries.
+  {name: "tool-download-5xx", kind: "external", in: "errors",
+   pattern: "^(Error: )?Unexpected HTTP response: 5[0-9]{2}$"},
+  # ephemeral Ephemeral environment, 42583637532 and 42583153204: helm/kind-action
+  # downloaded something other than the binary or its checksum file.
+  {name: "kind-download-corrupt", kind: "external", in: "log",
+   pattern: "kind-linux-[a-z0-9]+: FAILED|sha256sum: 'standard input': no properly formatted checksum lines found"}
 ];
 
 def job_cause:

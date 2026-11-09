@@ -772,6 +772,18 @@ check "a refused token outranks every other job" \
 check "infra next to an outage reads as the outage, and all infra stays infra" \
   '.[0].kind == "external" and .[1] == {kind: "infra", signature: "android-emulator-boot-timeout"}' \
   "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": [], "log": "Restful Booker Platform is not ready after 29 attempts\n"}]}') $(cause_of '{"jobs": [{"errors": ["Timeout waiting for emulator to boot."], "log": null}, {"errors": ["Timeout waiting for emulator to boot."], "log": null}]}')")"
+check "a 5xx from Gradle's download server reads as external" \
+  '. == {kind: "external", signature: "gradle-download-5xx"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Exception in thread \"main\" java.io.IOException: Server returned HTTP response code: 504 for URL: https://services.gradle.org/distributions/gradle-9.3.1-bin.zip"], "log": null}]}')"
+check "a 5xx on a tool download reads as external, with or without the prefix" \
+  'all(.[]; . == {kind: "external", signature: "tool-download-5xx"})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": ["Error: Unexpected HTTP response: 504"], "log": null}]}') $(cause_of '{"jobs": [{"errors": ["Unexpected HTTP response: 503"], "log": null}]}')")"
+check "a download refused with a 4xx is not an outage" \
+  'all(.[]; . == {kind: "unknown", signature: null})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": ["Error: Unexpected HTTP response: 404"], "log": null}]}') $(cause_of '{"jobs": [{"errors": ["Exception in thread \"main\" java.io.IOException: Server returned HTTP response code: 403 for URL: https://services.gradle.org/distributions/gradle-9.3.1-bin.zip"], "log": null}]}')")"
+check "a kind download that fails its checksum reads as external, from the log" \
+  'all(.[]; . == {kind: "external", signature: "kind-download-corrupt"})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": [], "log": "sha256sum: WARNING: 1 computed checksum did NOT match\nkind-linux-amd64: FAILED\n"}]}') $(cause_of '{"jobs": [{"errors": [], "log": "sha256sum: '"'"'standard input'"'"': no properly formatted checksum lines found\n"}]}')")"
 check "the answer carries no text from the log" \
   'keys == ["kind", "signature"]' \
   "$(cause_of '{"jobs": [{"errors": ["Bad credentials - https://docs.github.com/rest"], "log": "something secret\n"}]}')"
@@ -1103,6 +1115,47 @@ check "a later merge settles an earlier refusal of the same PR" \
   '.[0].text | contains("**Auto-merged:** [#1]") and (contains("refused") | not)' \
   "$(digest_full '{repos: [quiet], auto_merged: [{repo: "r", pr: 1, outcome: "refused", reason: "x"}, {repo: "r", pr: 1, outcome: "merged"}]}')"
 check "the digest works without holds or records" '.[0].status == "green"' "$(digest_full '{repos: [quiet]}')"
+
+echo
+echo "issues.sh, a real run"
+# --dry-run skips the writes and the steps around them, so a bug there goes
+# unseen. This runs a copy of the scripts with the collection, the App's token
+# and gh faked, so nothing reaches GitHub or reads the App's key.
+issues_dir="$(mktemp -d)"
+issues_log="$issues_dir/gh.log"
+: >"$issues_log"
+mkdir "$issues_dir/bin"
+cp -R scripts kogut.config.json "$issues_dir/"
+echo 'kogut_app_token() { echo test-token; }' >>"$issues_dir/scripts/lib.sh"
+cat >"$issues_dir/scripts/collect.sh" <<'EOF'
+#!/usr/bin/env bash
+jq -cn '{key: "secrets:age", kind: "secrets", auto: true, title: "Secrets: X", slug: "secrets-age",
+         facts: {warn_days: 80, secrets: [{name: "X", updated_at: "2026-01-01T00:00:00Z", age_days: 100}]}} as $f
+  | {repos: [$ARGS.positional[] | {name: ., error: null, findings: [$f]}]}' --args "$@"
+EOF
+cat >"$issues_dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "${GH_TOKEN:-no-token} $(tr '\n' ' ' <<<"$*")" >>"$GH_LOG"
+case "$*" in
+  *"issues?state=open"*) echo '[]' ;;
+  "api repos/"*"/labels/"*) exit 1 ;;
+  "api -X POST repos/"*"/issues --input -"*) cat >/dev/null; echo '#1 https://github.test/1' ;;
+esac
+EOF
+chmod +x "$issues_dir/bin/gh"
+issues_status=0
+issues_out="$(GH_LOG="$issues_log" KOGUT_HOLD_FILE=/nonexistent PATH="$issues_dir/bin:$PATH" \
+  "$issues_dir/scripts/issues.sh" mobile-task-manager-automation flakemetry 2>&1)" || issues_status=$?
+check "a real run finishes and opens the issue in each repository" \
+  '.status == 0 and ([.out | scan("opened #1")] | length == 2)' \
+  "$(jq -cn --argjson status "$issues_status" --arg out "$issues_out" '{$status, $out}')"
+check "the feature label is asked for only where features are on" \
+  'contains("mobile-task-manager-automation/labels/kogut-feature") and (contains("flakemetry/labels/kogut-feature") | not)' \
+  "$(jq -Rs . "$issues_log")"
+check "every call carries the App's token" \
+  'split("\n") | map(select(. != "")) | length > 0 and all(startswith("test-token "))' \
+  "$(jq -Rs . "$issues_log")"
+rm -rf "$issues_dir"
 
 echo
 echo "$passed passed, $failed failed"
