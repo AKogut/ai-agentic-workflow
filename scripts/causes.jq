@@ -16,6 +16,10 @@ def signatures: [
   # flakemetry release, 41462782379: changesets/action with RELEASE_PAT.
   {name: "github-bad-credentials", kind: "credentials", in: "errors",
    pattern: "^Bad credentials - https://docs\\.github\\.com/rest"},
+  # flakemetry release, 41840530609 and 42602775016: the workflow's own check of
+  # RELEASE_PAT. Only a 401: any other status says nothing about the token.
+  {name: "release-token-rejected", kind: "credentials", in: "errors",
+   pattern: "^GitHub answered 401\\. No version pull request can open until it is rotated"},
   # mobile Appium E2E, 41474808279: android-emulator-runner gave up.
   {name: "android-emulator-boot-timeout", kind: "infra", in: "errors",
    pattern: "^Timeout waiting for emulator to boot\\.$"},
