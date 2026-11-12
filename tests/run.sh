@@ -1309,5 +1309,106 @@ check "one repository alone shares nothing" '.shared_updates == []' \
   "$(jq '.repos |= map(select(.name == "one"))' "$su_fixture" | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
 
 echo
+echo "daily summary"
+check "a PR in cooldown says when it is free, and one that is not says nothing" \
+  '(pr("alpha"; 2) | .in_cooldown and .cooldown_ends == "2026-11-01T12:00:00Z")
+     and (pr("alpha"; 1) | (.in_cooldown | not) and .cooldown_ends == null)'
+# The summary of a digest input, with the reports digest.jq renders from it.
+summary_of() { jq -c --argjson reports "$(jq -c -f scripts/digest.jq <<<"$1")" -f scripts/summary.jq <<<"$1"; }
+summary="$(summary_of "$(cat tests/fixtures/summary.json)")"
+check "the summary takes the worst colour of the reports and says a merge changed something" \
+  '.status == "red" and (.text | split("\n")[0]
+     == "*Daily summary of 3 repositories, 2026-11-12: the merges below are all kogut changed.*")' "$summary"
+check "kogut's PRs wait for the owner when green or past the follow-up limit" \
+  '.text | contains("- alpha [#10](https://github.test/alpha/pull/10): kogut'"'"'s PR, green, for you to review and merge")
+     and contains("- alpha [#11](https://github.test/alpha/pull/11): kogut'"'"'s PR, past its follow-up limit, so it is yours")' "$summary"
+check "a ready PR waits for the owner, with a major and the auto-merge tier marked" \
+  '.text | contains("- alpha [#1](https://github.test/alpha/pull/1): ready to merge, in the auto-merge tier")
+     and contains("- alpha [#2](https://github.test/alpha/pull/2): ready to merge (major)\n")' "$summary"
+check "an answered task and a feature plan wait for the owner, and kogut's own issue does not" \
+  '.text | contains("[#20](https://github.test/alpha/issues/20): kogut answered the task, your turn")
+     and contains("[#30](https://github.test/alpha/issues/30): a feature plan waits for your approval")
+     and (contains("#21") or contains("#31") | not)' "$summary"
+check "a refused token and an old secret are the owner's, and a fresh secret is not named" \
+  '.text | contains("- alpha [release](https://github.test/alpha/actions/runs/100): a token was refused (release-token-rejected), and only you can replace it")
+     and contains("- alpha [RELEASE_PAT](https://github.test/alpha/settings/secrets/actions): a secret 107 days old, so it may have expired")
+     and (contains("NPM_TOKEN") | not)' "$summary"
+check "red: the default branch with its cause, critical and high alerts, and red PRs, without Dependabot's own runs" \
+  '.text | (split("**Red**\n")[1] | split("\n**")[0]) == ([
+     "- alpha [release](https://github.test/alpha/actions/runs/100): red on main, 5 in a row: credentials (release-token-rejected)",
+     "- alpha [CI](https://github.test/alpha/actions/runs/101): red on main, 2 in a row",
+     "- alpha [1 critical, 2 high alerts](https://github.test/alpha/security/dependabot)",
+     "- alpha [#5](https://github.test/alpha/pull/5): Dependabot'"'"'s PR, checks red",
+     "- alpha [#12](https://github.test/alpha/pull/12): kogut'"'"'s PR, checks red"] | join("\n"))' "$summary"
+check "the cooldown lists each PR with when it is free, earliest first, and what else holds it" \
+  '.text | (split("**In cooldown**\n")[1] | split("\n**")[0]) == ([
+     "- alpha [#4](https://github.test/alpha/pull/4): free from 2026-11-13 09:30 UTC; also checks are red",
+     "- alpha [#3](https://github.test/alpha/pull/3): free from 2026-11-14 08:00 UTC"] | join("\n"))' "$summary"
+check "auto-merge shows the latest record per PR, only for the repositories in the run" \
+  '.text | contains("- alpha [#7](https://github.test/alpha/pull/7): merged\n")
+     and contains("- alpha [#8](https://github.test/alpha/pull/8): not merged, over the limit of 1 merges a day")
+     and (contains("is not ready") or contains("delta") | not)' "$summary"
+check "a hold and a repository that could not be read are said" \
+  '.text | contains("**On hold**\n- beta: since 2026-11-10: the owner works here")
+     and contains("**Could not read**\n- gamma: could not be read")' "$summary"
+check "no PR or issue title reaches the summary" '.text | contains("a title someone wrote") | not' "$summary"
+check "a quiet run is green, changed nothing and says nothing waits" \
+  '.status == "green" and .text == "*Daily summary of 1 repository: read-only, nothing was changed.*\nNothing waits for you, and nothing is red."' \
+  "$(summary_of '{"repos": [{"name": "beta", "url": "https://github.test/beta", "dependabot_prs": [], "kogut_prs": [], "tasks": [],
+    "other_prs": [], "ci_failing": [], "workflows_disabled": [], "hygiene_issues": []}]}')"
+
+# notify.sh runs from a copy, with curl and gh faked, so nothing reaches Discord or GitHub.
+notify_dir="$(mktemp -d)"
+mkdir "$notify_dir/bin" "$notify_dir/outbox"
+cp -R scripts kogut.config.json "$notify_dir/"
+cat >"$notify_dir/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out="" data="" url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift ;;
+    --data-binary) data="$2"; shift ;;
+    -w | -H) shift ;;
+    -*) ;;
+    *) url="$1" ;;
+  esac
+  shift
+done
+echo "$url $data" >>"$CURL_LOG"
+[ -z "$out" ] || echo '{"channel_id": "1"}' >"$out"
+printf 200
+EOF
+printf '#!/bin/sh\nexit 1\n' >"$notify_dir/bin/gh"
+chmod +x "$notify_dir/bin/curl" "$notify_dir/bin/gh"
+: >"$notify_dir/curl.log"
+# Built from parts, so this file holds nothing the secret scan takes for a webhook.
+hook_base="https://discord.com/api/webhooks"
+echo "DISCORD_WEBHOOK_FLAKEMETRY=$hook_base/1/repo" >"$notify_dir/.env"
+notify_run() {
+  local status=0 out
+  out="$(CURL_LOG="$notify_dir/curl.log" KOGUT_OUTBOX="$notify_dir/outbox" PATH="$notify_dir/bin:$PATH" \
+    "$notify_dir/scripts/notify.sh" "$@" 2>&1)" || status=$?
+  jq -cn --argjson status "$status" --arg out "$out" --arg log "$(cat "$notify_dir/curl.log")" '{$status, $out, $log}'
+}
+echo "a summary" >"$notify_dir/outbox/summary.md"
+check "without its webhook the summary is skipped with one line, and nothing is posted" \
+  '. == {status: 0, out: "summary not sent: DISCORD_WEBHOOK_SUMMARY is not set in .env", log: ""}' \
+  "$(notify_run --summary yellow)"
+echo "a report" >"$notify_dir/outbox/flakemetry.md"
+check "a repository's report goes to its own channel as before" \
+  '.status == 0 and .out == "sent to Discord: flakemetry (1 message(s))"
+     and (.log | capture("^(?<url>\\S+) (?<payload>.*)$") | (.url | endswith("/1/repo?wait=true"))
+       and (.payload | fromjson | .embeds[0] | .title == "🟢 flakemetry" and .description == "a report\n"))' \
+  "$(notify_run flakemetry green)"
+: >"$notify_dir/curl.log"
+echo "DISCORD_WEBHOOK_SUMMARY=$hook_base/2/summary" >>"$notify_dir/.env"
+check "with its webhook the summary goes to its own channel, under its own title" \
+  '.status == 0 and .out == "sent to Discord: summary (1 message(s))"
+     and (.log | capture("^(?<url>\\S+) (?<payload>.*)$") | (.url | endswith("/2/summary?wait=true"))
+       and (.payload | fromjson | .embeds[0] | .title == "🔴 All repositories" and .description == "a summary\n"))' \
+  "$(notify_run --summary red)"
+rm -rf "$notify_dir"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

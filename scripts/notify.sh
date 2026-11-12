@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Posts a report to the Discord channel of one watched repository.
+# Posts a report to the Discord channel of one watched repository, or the daily
+# summary to the summary channel.
 #
-#   ./scripts/notify.sh <repo> <red|yellow|green>   # sends .kogut/outbox/<repo>.md
-#   ./scripts/notify.sh --check                     # checks every webhook, posts nothing
+#   ./scripts/notify.sh <repo> <red|yellow|green>      # sends .kogut/outbox/<repo>.md
+#   ./scripts/notify.sh --summary <red|yellow|green>   # sends .kogut/outbox/summary.md
+#   ./scripts/notify.sh --check                        # checks every webhook, posts nothing
 #
-# Webhook URLs come from .env (DISCORD_WEBHOOK_<REPO_IN_UPPER_SNAKE_CASE>) and
-# are never printed. Mentions are switched off, so text quoted from a PR cannot
-# ping anyone. A sent report is moved to .kogut/sent/. digest.sh sets KOGUT_OUTBOX
-# to send from an outbox of its own.
+# Webhook URLs come from .env (DISCORD_WEBHOOK_<REPO_IN_UPPER_SNAKE_CASE>, and
+# DISCORD_WEBHOOK_SUMMARY for the summary) and are never printed. The summary
+# channel is optional: without its webhook the summary is skipped with one line,
+# which is not a failure. Mentions are switched off, so text quoted from a PR
+# cannot ping anyone. A sent report is moved to .kogut/sent/. digest.sh sets
+# KOGUT_OUTBOX to send from an outbox of its own.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -16,12 +20,21 @@ env_file="$KOGUT_ROOT/.env"
 [ -f "$env_file" ] || die "missing .env with the Discord webhooks (see .env.example)"
 command -v curl >/dev/null || die "curl is not installed"
 
-# Reads the repository's webhook from .env without sourcing it (that would run
-# whatever the file contains), and refuses anything that is not a Discord webhook.
+# The variable that holds a channel's webhook: the repository's name in upper
+# snake case, or SUMMARY for the summary channel.
+webhook_key() { printf 'DISCORD_WEBHOOK_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
+
+# Reads a webhook from .env without sourcing it (that would run whatever the
+# file contains). Prints nothing when the variable is not set.
+webhook_value() {
+  grep -E "^$1=" "$env_file" | tail -n 1 | cut -d= -f2- | tr -d "\"' " || true
+}
+
+# A channel's webhook. Refuses one that is not set or is not a Discord webhook.
 webhook_for() {
   local key url
-  key="DISCORD_WEBHOOK_$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
-  url="$(grep -E "^$key=" "$env_file" | tail -n 1 | cut -d= -f2- | tr -d "\"' ")" || true
+  key="$(webhook_key "$1")"
+  url="$(webhook_value "$key")"
   [ -n "$url" ] || die "$key is not set in .env"
   [[ "$url" =~ ^https://(discord|discordapp)\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$ ]] ||
     die "$key in .env is not a Discord webhook URL"
@@ -45,19 +58,35 @@ if [ "${1:-}" = "--check" ]; then
       echo "FAIL  $repo → HTTP $code"
       failed=1
     fi
-  done < <(kogut_repos)
+  done < <(
+    kogut_repos
+    # The summary channel is optional, so its webhook is checked only when set.
+    [ -z "$(webhook_value "$(webhook_key summary)")" ] || echo summary
+  )
+  [ -n "$(webhook_value "$(webhook_key summary)")" ] ||
+    echo "skip  summary → $(webhook_key summary) is not set, so no summary is posted"
   exit "$failed"
 fi
 
-[ $# -eq 2 ] || die "usage: notify.sh <repo> <red|yellow|green> | --check"
-repo="$1" status="$2"
-kogut_require_repo "$repo"
+[ $# -eq 2 ] || die "usage: notify.sh <repo> <red|yellow|green> | --summary <red|yellow|green> | --check"
+# For the summary, "repo" names the summary channel and its outbox file.
+repo="$1" status="$2" summary=false
+if [ "$repo" = --summary ]; then
+  repo=summary summary=true title="All repositories" link="https://github.com/$(kogut_owner)"
+else
+  kogut_require_repo "$repo"
+  title="$repo" link="https://github.com/$(kogut_owner)/$repo"
+fi
 case "$status" in
   red) color=15158332 emoji="🔴" ;;
   yellow) color=15844367 emoji="🟡" ;;
   green) color=3066993 emoji="🟢" ;;
   *) die "status must be red, yellow or green: $status" ;;
 esac
+if [ "$summary" = true ] && [ -z "$(webhook_value "$(webhook_key summary)")" ]; then
+  echo "summary not sent: $(webhook_key summary) is not set in .env"
+  exit 0
+fi
 file="${KOGUT_OUTBOX:-$KOGUT_ROOT/.kogut/outbox}/$repo.md"
 [ -s "$file" ] || die "nothing to send: $file is missing or empty"
 url="$(webhook_for "$repo")"
@@ -65,8 +94,8 @@ url="$(webhook_for "$repo")"
 # One embed per message, each under Discord's 4096-character description limit.
 # A long report is split on line boundaries; only the first part has a title.
 payloads="$(jq -Rs -c \
-  --arg title "$emoji $repo" \
-  --arg link "https://github.com/$(kogut_owner)/$repo" \
+  --arg title "$emoji $title" \
+  --arg link "$link" \
   --argjson color "$color" \
   --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
   def pieces($max): if length <= $max then . else range(0; length; $max) as $o | .[$o:$o + $max] end;

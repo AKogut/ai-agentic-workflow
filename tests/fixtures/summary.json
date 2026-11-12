@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-11-12T08:00:00Z",
+  "policy": {"cooldown_days": 3},
+  "holds": {"beta": "on hold since 2026-11-10: the owner works here"},
+  "auto_merged": [
+    {"at": "2026-11-12T07:00:00Z", "repo": "alpha", "pr": 7, "head": "aaaaaaa", "outcome": "refused", "reason": "the gate says the PR is not ready"},
+    {"at": "2026-11-12T07:05:00Z", "repo": "alpha", "pr": 7, "head": "aaaaaaa", "outcome": "merged"},
+    {"at": "2026-11-12T07:06:00Z", "repo": "alpha", "pr": 8, "head": "bbbbbbb", "outcome": "refused", "reason": "over the limit of 1 merges a day"},
+    {"at": "2026-11-12T07:07:00Z", "repo": "delta", "pr": 9, "head": "ccccccc", "outcome": "merged"}
+  ],
+  "repos": [
+    {
+      "name": "alpha",
+      "url": "https://github.test/alpha",
+      "default_branch": "main",
+      "dependabot_prs": [
+        {"number": 1, "url": "https://github.test/alpha/pull/1", "title": "a title someone wrote", "semver": "patch",
+         "checks": "green", "in_cooldown": false, "cooldown_ends": null, "ready_to_merge": true, "blockers": [],
+         "auto_merge": {"eligible": true, "why": []}},
+        {"number": 2, "url": "https://github.test/alpha/pull/2", "title": "a title someone wrote", "semver": "major",
+         "checks": "green", "in_cooldown": false, "cooldown_ends": null, "ready_to_merge": true, "blockers": [],
+         "auto_merge": {"eligible": false, "why": ["a major update, not a patch"]}},
+        {"number": 3, "url": "https://github.test/alpha/pull/3", "title": "a title someone wrote", "semver": "patch",
+         "checks": "green", "in_cooldown": true, "cooldown_ends": "2026-11-14T08:00:00Z", "ready_to_merge": false,
+         "blockers": ["younger than the 3-day cooldown"]},
+        {"number": 4, "url": "https://github.test/alpha/pull/4", "title": "a title someone wrote", "semver": "minor",
+         "checks": "red", "in_cooldown": true, "cooldown_ends": "2026-11-13T09:30:00Z", "ready_to_merge": false,
+         "blockers": ["checks are red", "younger than the 3-day cooldown"]},
+        {"number": 5, "url": "https://github.test/alpha/pull/5", "title": "a title someone wrote", "semver": "patch",
+         "checks": "red", "in_cooldown": false, "cooldown_ends": null, "ready_to_merge": false, "blockers": ["checks are red"]}
+      ],
+      "kogut_prs": [
+        {"number": 10, "url": "https://github.test/alpha/pull/10", "title": "a title someone wrote", "checks": "green", "needs": "review"},
+        {"number": 11, "url": "https://github.test/alpha/pull/11", "title": "a title someone wrote", "checks": "red", "needs": "owner"},
+        {"number": 12, "url": "https://github.test/alpha/pull/12", "title": "a title someone wrote", "checks": "red", "needs": "fix-ci"}
+      ],
+      "tasks": [
+        {"number": 20, "url": "https://github.test/alpha/issues/20", "title": "a title someone wrote", "auto": false, "needs": "owner"},
+        {"number": 21, "url": "https://github.test/alpha/issues/21", "title": "a title someone wrote", "auto": true, "needs": "owner"}
+      ],
+      "features": [
+        {"number": 30, "url": "https://github.test/alpha/issues/30", "title": "a title someone wrote", "needs": "owner"},
+        {"number": 31, "url": "https://github.test/alpha/issues/31", "title": "a title someone wrote", "needs": "build"}
+      ],
+      "other_prs": [],
+      "ci_failing": [
+        {"name": "release", "path": ".github/workflows/release.yml", "failing_streak": 5,
+         "cause": {"kind": "credentials", "signature": "release-token-rejected"},
+         "latest_run": {"url": "https://github.test/alpha/actions/runs/100"}},
+        {"name": "CI", "path": ".github/workflows/ci.yml", "failing_streak": 2,
+         "cause": {"kind": "unknown", "signature": null},
+         "latest_run": {"url": "https://github.test/alpha/actions/runs/101"}},
+        {"name": "Dependabot Updates", "path": "dynamic/dependabot/dependabot-updates", "failing_streak": 3,
+         "cause": {"kind": "unknown", "signature": null},
+         "latest_run": {"url": "https://github.test/alpha/actions/runs/102"}}
+      ],
+      "workflows_disabled": [],
+      "alerts": {"by_severity": {"low": 3, "high": 2, "critical": 1}},
+      "secrets": {"status": "ok", "items": [
+        {"name": "RELEASE_PAT", "age_days": 107, "stale": true},
+        {"name": "NPM_TOKEN", "age_days": 10, "stale": false}
+      ]},
+      "hygiene_issues": []
+    },
+    {
+      "name": "beta",
+      "url": "https://github.test/beta",
+      "default_branch": "main",
+      "dependabot_prs": [], "kogut_prs": [], "tasks": [], "features": [], "other_prs": [],
+      "ci_failing": [], "workflows_disabled": [], "alerts": {"by_severity": {"medium": 1}},
+      "secrets": {"status": "ok", "items": []}, "hygiene_issues": []
+    },
+    {"name": "gamma", "error": "boom"}
+  ]
+}
