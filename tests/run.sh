@@ -1186,5 +1186,95 @@ check "a critical alert a PR fixes is covered, and the finding lists the rest wo
    and (.findings[] | select(.key == "alerts") | .facts.uncovered) == ["brace-expansion", "ms", "qs"]' "$uncovered"
 
 echo
+echo "which jobs of a failed run are read"
+# run-cause.sh against a fake gh that answers from tests/fixtures/run-cause.json
+# and writes down every request, so the test sees which jobs were read.
+rc_dir="$(mktemp -d)"
+mkdir "$rc_dir/bin"
+cat >"$rc_dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+method=GET path="" filter=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --method) method="$2"; shift ;;
+    --jq) filter="$2"; shift ;;
+    repos/*) path="$1" ;;
+  esac
+  shift
+done
+echo "$method $path" >>"$RC_LOG"
+id="$(sed -E 's#^.*/(runs|check-runs|jobs)/([0-9]+)/.*$#\2#' <<<"$path")"
+job="$(jq -c --argjson id "$id" 'first(.runs[].jobs[] | select(.id == $id)) // null' "$RC_FIXTURE")"
+case "$path" in
+  */actions/runs/*/jobs*) out="$(jq -c --arg id "$id" '{jobs: .runs[$id].jobs}' "$RC_FIXTURE")" ;;
+  */annotations*)
+    if [ "$(jq -r '.annotations' <<<"$job")" = unreadable ]; then echo "gh: HTTP 502" >&2; exit 1; fi
+    out="$(jq -c '.annotations' <<<"$job")" ;;
+  */logs)
+    if [ "$(jq -r '.expired // false' <<<"$job")" = true ]; then echo "gh: HTTP 410" >&2; exit 1; fi
+    if [ "$method" = HEAD ]; then printf 'HTTP/2.0 200 OK\nContent-Length: %s\n\n' "$(jq -r '.size' <<<"$job")"; exit 0; fi
+    jq -j '.log' <<<"$job"
+    exit 0 ;;
+  *) echo "gh: unexpected $path" >&2; exit 1 ;;
+esac
+if [ -n "$filter" ]; then jq -c "$filter" <<<"$out"; else printf '%s\n' "$out"; fi
+EOF
+chmod +x "$rc_dir/bin/gh"
+# Two more runs, of 21 and of 20 emulators that never booted.
+jq '.runs["1006"].jobs = [range(21) | {id: (1600 + .), conclusion: "failure", steps: [{name: "Run E2E", conclusion: "failure"}],
+      annotations: [{annotation_level: "failure", message: "Timeout waiting for emulator to boot."}], size: 1000, log: ""}]
+    | .runs["1007"].jobs = (.runs["1006"].jobs[:20] | map(.id += 100))' \
+  tests/fixtures/run-cause.json >"$rc_dir/fixture.json"
+# rc_of <run>: how run-cause.sh exited, what it answered, and its requests in order.
+rc_of() {
+  local out status=0
+  : >"$rc_dir/calls"
+  out="$(RC_FIXTURE="$rc_dir/fixture.json" RC_LOG="$rc_dir/calls" PATH="$rc_dir/bin:$PATH" \
+    ./scripts/run-cause.sh ephemeral-k8s-test-envs "$1" 2>/dev/null)" || status=$?
+  jq -cn --argjson status "$status" --arg out "$out" --rawfile calls "$rc_dir/calls" \
+    '{status: $status, cause: ($out | fromjson? // $out), calls: ($calls | split("\n") | map(select(. != "")))}'
+}
+# The jobs whose annotations were read, whose log size was asked, and whose log was read.
+rc_helpers='
+  def job_ids($p): [.calls[] | select(test($p)) | split("?")[0] | split("/")[-2] | tonumber];
+  def annotations: job_ids("^GET .*/annotations");
+  def sizes: job_ids("^HEAD ");
+  def logs: job_ids("^GET .*/logs$");
+'
+rc_check() { check "$1" "$rc_helpers $2" "$3"; }
+rc_check "all five cluster jobs of a kind outage are read, one per failed step first, and explain the run" \
+  '.status == 0 and .cause == {kind: "external", signature: "kind-download-corrupt"}
+     and logs == [129049947117, 129049947166, 129049947133, 129049947152, 129049947254]' \
+  "$(rc_of 42583637532)"
+rc_check "the first job nothing explains ends the reading" \
+  '.cause == {kind: "unknown", signature: null} and logs == [1101, 1103] and (sizes | index(1102) == null)' \
+  "$(rc_of 1001)"
+rc_check "a refused token in any job's annotations is the answer, and no log is read" \
+  '.cause == {kind: "credentials", signature: "github-bad-credentials"}
+     and (annotations | sort) == [1201, 1202, 1203, 1204] and sizes == [] and logs == []' \
+  "$(rc_of 1002)"
+rc_check "a job its annotations explain has no log read, and a timed-out job is read" \
+  '.cause.kind == "infra" and sizes == [1302] and logs == [1302]' \
+  "$(rc_of 1003)"
+rc_check "the logs of one run stay within three at the limit" \
+  '.status == 0 and .cause.kind == "unknown" and sizes == [1401, 1402, 1403, 1404] and logs == [1401, 1402, 1403]' \
+  "$(rc_of 1004)"
+rc_check "a log too big to read leaves the run unknown, and nothing after it is read" \
+  '.status == 0 and .cause.kind == "unknown" and sizes == [1501] and logs == []' \
+  "$(rc_of 1005)"
+rc_check "past 20 failed jobs the run is unknown and no log is read, and 20 are all read" \
+  '(.[0] | .cause.kind == "unknown" and (annotations | length) == 20 and sizes == [])
+     and (.[1] | .cause == {kind: "infra", signature: "android-emulator-boot-timeout"} and (annotations | length) == 20)' \
+  "$(jq -cs . <<<"$(rc_of 1006) $(rc_of 1007)")"
+rc_check "an expired log is an answer to keep, and a failed read is not" \
+  '(.[0] | .status == 0 and .cause.kind == "unknown")
+     and (.[1] | .status == 3 and .cause.signature == "registry-pull-refused")' \
+  "$(jq -cs . <<<"$(rc_of 1008) $(rc_of 1009)")"
+rc_check "a run with no failed job reads nothing past its list of jobs" \
+  '.status == 0 and .cause == {kind: "unknown", signature: null} and (.calls | length) == 1' \
+  "$(rc_of 1010)"
+rm -rf "$rc_dir"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
