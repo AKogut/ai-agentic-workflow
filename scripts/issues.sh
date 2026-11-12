@@ -14,7 +14,8 @@
 #     diagnosis replaced when the model wrote a new one;
 #   - an issue whose finding is gone is closed with a comment that says so.
 # Only open issues that the App created itself and labelled `kogut` are ever
-# changed. The model's diagnosis for a finding goes in
+# changed. A repository on hold, or one the App is not installed on yet, is
+# skipped with a line that says why. The model's diagnosis for a finding goes in
 # .kogut/outbox/issues/<repo>/<slug>.md, as markdown, and is scanned with
 # gitleaks before anything is sent. --dry-run prints the plan and stops.
 set -euo pipefail
@@ -43,7 +44,8 @@ inbox="$KOGUT_ROOT/.kogut/outbox/issues"
 
 # The decisions rest on a fresh collection, never on an old snapshot.
 state="$(mktemp)"
-trap 'rm -f "$state"' EXIT
+err="$(mktemp)"
+trap 'rm -f "$state" "$err"' EXIT
 # shellcheck disable=SC2086 # repository names contain no spaces
 digest="$(KOGUT_STATE="$state" "$KOGUT_ROOT/scripts/collect.sh" $names)"
 
@@ -60,8 +62,17 @@ for repo in $names; do
     continue
   fi
   full="$(kogut_owner)/$repo"
+  # A repository the owner has not installed the App on yet is skipped, and says
+  # so; any other refusal stops the run.
+  if ! token="$(kogut_app_token "$repo" 2>"$err")"; then
+    if why="$(kogut_app_missing "$repo")"; then
+      echo "$repo: skipped, $why"
+      continue
+    fi
+    cat "$err" >&2
+    exit 1
+  fi
   # Checked before use: an empty GH_TOKEN would make gh write as the owner.
-  token="$(kogut_app_token "$repo")"
   [ -n "$token" ] || die "no token from the kogut App for $repo"
 
   existing="$(GH_TOKEN="$token" gh api \

@@ -1062,12 +1062,12 @@ check "on names one repository, with its reason" \
 check "the rest stays free" 'contains("mobile-task-manager-automation: not on hold") and contains("flakemetry: on hold since")' "$(hold status)"
 check "off lifts it" '. == "flakemetry: not on hold\n"' "$(hold off flakemetry)"
 check "on with no repository holds all of them" \
-  '[split("\n")[] | select(. != "")] | length == 6 and all(.[]; contains(": on hold since "))' "$(hold on)"
+  '[split("\n")[] | select(. != "")] | length == '"$(jq '.repos | length' kogut.config.json)"' and all(.[]; contains(": on hold since "))' "$(hold on)"
 check "off with one repository leaves the others on hold" \
   'contains("flakemetry: on hold") and contains("mobile-task-manager-automation: not on hold")' \
   "$(hold off mobile-task-manager-automation >/dev/null; hold status)"
 check "off with no repository lifts them all" \
-  '[split("\n")[] | select(. != "")] | length == 6 and all(.[]; contains(": not on hold"))' "$(hold off)"
+  '[split("\n")[] | select(. != "")] | length == '"$(jq '.repos | length' kogut.config.json)"' and all(.[]; contains(": not on hold"))' "$(hold off)"
 check "a repository outside the config is refused" 'contains("is not in kogut.config.json")' "$(hold on nowhere)"
 printf 'broken' >"$hold_file"
 check "a hold file that cannot be read is not overwritten" 'contains("cannot be read")' "$(hold off)"
@@ -1408,6 +1408,173 @@ check "with its webhook the summary goes to its own channel, under its own title
        and (.payload | fromjson | .embeds[0] | .title == "🔴 All repositories" and .description == "a summary\n"))' \
   "$(notify_run --summary red)"
 rm -rf "$notify_dir"
+
+echo
+echo "kogut's own repository"
+# A snapshot of kogut's own repository: bash, jq and GitHub Actions, with no
+# package.json, lockfile or Node pin, judged under the policy in kogut.config.json.
+self_in="$(jq --slurpfile c kogut.config.json '.policy = $c[0].policy' tests/fixtures/self.json |
+  KOGUT_NOW=2026-11-12T12:00:00Z jq -f scripts/signals.jq)"
+check "kogut watches its own repository" 'any(.repos[]; .name == "ai-agentic-workflow")' "$(cat kogut.config.json)"
+check "without package.json or a Node pin, the runtime watch flags nothing" \
+  'repo("ai-agentic-workflow") | .runtime | .judged and (.flagged | not) and .pin == null and .line == null
+     and .engines == null and (.conflict | not)' "$self_in"
+check "without alerts or gaps it has no finding, so no issue" \
+  'repo("ai-agentic-workflow") | .alerts.total == 0 and .alerts.uncovered == [] and .hygiene_issues == [] and .findings == []' "$self_in"
+check "an update to its GitHub Actions can be ready, but never merges unattended" \
+  'pr("ai-agentic-workflow"; 3) | .ready_to_merge and .semver == "patch" and (.auto_merge.eligible | not)
+     and (.auto_merge.why | index("the title does not say deps-dev"))
+     and (.auto_merge.why | index("the metadata names a dependency that is not direct:development"))' "$self_in"
+check "its digest is green and says nothing about Node or alerts" \
+  '.[0] | .status == "green" and (.text | contains("Nothing needs you.") and (contains("Node") | not) and (contains("Alerts") | not))' \
+  "$(jq -c '.repos[0].dependabot_prs = []' <<<"$self_in" | jq -c -f scripts/digest.jq)"
+
+# A fix never changes .claude/settings.json, in kogut's own repository or any other.
+stage_dir="$(mktemp -d)"
+mkdir -p "$stage_dir/repo/.claude"
+echo '{}' >"$stage_dir/repo/.claude/settings.json"
+git -C "$stage_dir/repo" init -q
+git -C "$stage_dir/repo" add -A
+git -C "$stage_dir/repo" -c user.name=t -c user.email=t@example.com commit -q -m base
+printf 'fix: a thing\n\nBody\n' >"$stage_dir/text.md"
+staged() {
+  bash -c 'source scripts/lib.sh; kogut_scan() { cat >/dev/null; }; kogut_stage "$1" false "$2" && echo staged' \
+    _ "$stage_dir/repo" "$stage_dir/text.md" 2>&1 | jq -Rs .
+}
+unstage() { git -C "$stage_dir/repo" reset -q --hard && git -C "$stage_dir/repo" clean -fdq; }
+echo '{"permissions": {"allow": ["Bash(*)"]}}' >"$stage_dir/repo/.claude/settings.json"
+check "a fix that changes .claude/settings.json is refused" \
+  'contains("the fix changes .claude/settings.json: what an agent may run is the owner'"'"'s to set, by hand")' "$(staged)"
+unstage
+rm "$stage_dir/repo/.claude/settings.json"
+check "so is one that deletes it" 'contains("the fix changes .claude/settings.json")' "$(staged)"
+unstage
+mkdir -p "$stage_dir/repo/app/.claude"
+echo '{}' >"$stage_dir/repo/app/.claude/settings.json"
+check "and one in a subdirectory" 'contains("the fix changes app/.claude/settings.json")' "$(staged)"
+unstage
+mkdir -p "$stage_dir/repo/.claude/skills/kogut" "$stage_dir/repo/scripts"
+echo x >"$stage_dir/repo/.claude/skills/kogut/SKILL.md"
+echo x >"$stage_dir/repo/scripts/signals.jq"
+check "kogut's scripts and its skill go to the owner's review like any fix" '. == "staged\n"' "$(staged)"
+rm -rf "$stage_dir"
+
+# Until the owner installs the App on it and gives it a channel, the scripts that
+# run over every repository skip it and say why, and the others go on. A copy of
+# the scripts runs with the collection, gh, curl and the merge faked; the App is
+# installed everywhere else, and REFUSE names a repository whose token GitHub refuses.
+self_dir="$(mktemp -d)"
+mkdir "$self_dir/bin"
+cp -R scripts kogut.config.json "$self_dir/"
+cat >>"$self_dir/scripts/lib.sh" <<'EOF'
+kogut_app_jwt() { echo test-jwt; }
+kogut_app_token() {
+  [ "$1" != ai-agentic-workflow ] || die "the kogut App is not installed on $1"
+  [ "$1" != "${REFUSE:-}" ] || die "GitHub refused an installation token for $1"
+  echo test-token
+}
+EOF
+cat >"$self_dir/scripts/collect.sh" <<'EOF'
+#!/usr/bin/env bash
+# Every repository has one patch the auto-merge tier takes, and one finding.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+[ $# -gt 0 ] || set -- $(jq -r '.repos[].name' "$root/kogut.config.json")
+jq -cn '{repos: [$ARGS.positional[] | {name: ., url: "https://github.test/\(.)", error: null,
+  ci_failing: [], kogut_prs: [], tasks: [], other_prs: [], workflows_disabled: [], hygiene_issues: [],
+  dependabot_prs: [{number: 1, title: "chore(deps-dev): bump x from 1.0.0 to 1.0.1", url: "https://github.test/\(.)/pull/1",
+    head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ready_to_merge: true, blockers: [], semver: "patch",
+    mergeable: "MERGEABLE", auto_merge: {eligible: true, why: []}}],
+  findings: [{key: "hygiene", kind: "hygiene", auto: true, title: "Repository hygiene gaps", slug: "hygiene",
+    facts: {issues: ["merged branches are not deleted"]}}]}]}' --args "$@"
+EOF
+cat >"$self_dir/scripts/merge-dependabot.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "merged $1 #$2"
+EOF
+cat >"$self_dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >>"$GH_LOG"
+case "$*" in
+  *"issues?state=open"*) echo '[]' ;;
+  "api repos/"*"/labels/"*) exit 1 ;;
+  "api -X POST repos/"*"/issues --input -"*) cat >/dev/null; echo '#1 https://github.test/1' ;;
+  "api users/"*) echo 1 ;;
+esac
+EOF
+# Answers like GitHub: the App's installation is missing on kogut's own repository
+# only, and Discord takes every post.
+cat >"$self_dir/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out="" write=false fail=false url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift ;;
+    -w) write=true; shift ;;
+    -H | --data | --data-binary | -X) shift ;;
+    -f*) fail=true ;;
+    -*) ;;
+    *) url="$1" ;;
+  esac
+  shift
+done
+echo "$url" >>"$CURL_LOG"
+code=200 body='{"id": 1, "channel_id": "1", "permissions": {"metadata": "read"}}'
+case "$url" in */repos/*/ai-agentic-workflow/installation) code=404 body='{"message": "Not Found"}' ;; esac
+if [ -n "$out" ]; then printf '%s' "$body" >"$out"; elif [ "$write" = false ]; then printf '%s' "$body"; fi
+[ "$write" = false ] || printf '%s' "$code"
+[ "$fail" = false ] || [ "$code" = 200 ] || exit 22
+EOF
+chmod +x "$self_dir/bin/gh" "$self_dir/bin/curl" "$self_dir/scripts/collect.sh" "$self_dir/scripts/merge-dependabot.sh"
+# Every repository but kogut's own has a webhook, written in two parts so no
+# whole webhook URL sits in this file.
+hook="https://discord.com/api/webhooks"
+n=0
+for r in $(jq -r '.repos[].name' kogut.config.json); do
+  key="DISCORD_WEBHOOK_$(tr '[:lower:]-' '[:upper:]_' <<<"$r")"
+  if [ "$r" = ai-agentic-workflow ]; then echo "$key="; else n=$((n + 1)) && echo "$key=$hook/$n/test"; fi
+done >"$self_dir/.env"
+others="$(jq '[.repos[] | select(.name != "ai-agentic-workflow")] | length' kogut.config.json)"
+self_run() { # status, output and both logs of one call in the copy, as JSON
+  local status=0 out
+  : >"$self_dir/gh.log"
+  : >"$self_dir/curl.log"
+  out="$(GH_LOG="$self_dir/gh.log" CURL_LOG="$self_dir/curl.log" KOGUT_HOLD_FILE=/nonexistent PATH="$self_dir/bin:$PATH" \
+    "$@" 2>&1)" || status=$?
+  jq -cn --argjson status "$status" --arg out "$out" --rawfile gh "$self_dir/gh.log" --rawfile curl "$self_dir/curl.log" \
+    '{$status, $out, $gh, $curl}'
+}
+
+daily="$(self_run "$self_dir/scripts/daily.sh")"
+check "the daily job finishes, and skips it twice, saying why" \
+  '.status == 0 and (.out | contains("ai-agentic-workflow: skipped, the kogut App is not installed on ai-agentic-workflow")
+     and contains("ai-agentic-workflow: not posted, it has no Discord webhook in .env yet"))' "$daily"
+check "the other repositories still get their merge and their digest" \
+  '([.out | scan("merged [a-z0-9-]+ #1")] | length) == '"$others"' and (.out | contains("merged ai-agentic-workflow") | not)
+   and ([.curl | scan("webhooks/[0-9]+/test[?]wait=true")] | length) == '"$others"'
+   and ([.out | scan("sent to Discord: [a-z0-9-]+")] | length) == '"$others" "$daily"
+check "the digest renders it without posting, and a dry run leaves .env alone" \
+  '.status == 0 and (.out | contains("--- ai-agentic-workflow (yellow)")) and (.curl | contains("webhooks") | not)' \
+  "$(self_run "$self_dir/scripts/digest.sh" --dry-run)"
+check "notify.sh --check shows it without a channel, and passes" \
+  '.status == 0 and (.out | contains("none  ai-agentic-workflow → no channel yet: DISCORD_WEBHOOK_AI_AGENTIC_WORKFLOW is not set in .env"))
+   and ([.out | scan("(?m)^ok    ")] | length) == '"$others" "$(self_run "$self_dir/scripts/notify.sh" --check)"
+
+check "app.sh check shows it as not installed, with the link, and passes" \
+  '.status == 0 and (.out | contains("none  ai-agentic-workflow → kogut-agent is not installed there yet")
+     and contains("to install it on ai-agentic-workflow: https://github.com/apps/kogut-agent/installations/new")
+     and contains("granted: metadata: read") and (contains("FAIL") | not))
+   and ([.out | scan("(?m)^ok    ")] | length) == '"$others" "$(self_run "$self_dir/scripts/app.sh" check)"
+check "app.sh check still fails a token refused where the App is installed" \
+  '.status == 1 and (.out | contains("FAIL  flakemetry"))' "$(REFUSE=flakemetry self_run "$self_dir/scripts/app.sh" check)"
+
+issues="$(self_run "$self_dir/scripts/issues.sh" ai-agentic-workflow flakemetry)"
+check "issues.sh skips it, saying why, and goes on to the next" \
+  '.status == 0 and (.out | contains("ai-agentic-workflow: skipped, the kogut App is not installed on ai-agentic-workflow")
+     and contains("flakemetry: opened #1")) and (.gh | contains("ai-agentic-workflow") | not)' "$issues"
+check "issues.sh still stops on a token refused for another reason" \
+  '.status == 1 and (.out | contains("GitHub refused an installation token for flakemetry")) and (.out | contains("flakemetry: skipped") | not)' \
+  "$(REFUSE=flakemetry self_run "$self_dir/scripts/issues.sh" flakemetry)"
+rm -rf "$self_dir"
 
 echo
 echo "$passed passed, $failed failed"

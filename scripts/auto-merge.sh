@@ -9,7 +9,8 @@
 #   ./scripts/auto-merge.sh [--dry-run]
 #
 # --dry-run prints every Dependabot PR with its verdict and why, and merges and
-# records nothing. A real run skips a repository on hold, merges at most
+# records nothing. Either run skips, and says so, a repository on hold or one the
+# App is not installed on yet. A real run merges at most
 # policy.auto_merge.limit_per_repo PRs per repository per day, and records each
 # outcome in .kogut/auto-merged/<YYYY-MM-DD>.jsonl, which the digest reports. It
 # fails at the end when a repository could not be read or a merge was refused.
@@ -61,6 +62,11 @@ while IFS= read -r repo; do
     continue
   fi
   if why="$(kogut_held "$repo")"; then
+    echo "$repo: skipped, $why"
+    continue
+  fi
+  # Until the owner installs the App there, nothing can merge, and that is no failure.
+  if why="$(kogut_app_missing "$repo")"; then
     echo "$repo: skipped, $why"
     continue
   fi

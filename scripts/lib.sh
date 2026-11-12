@@ -149,13 +149,17 @@ kogut_fix_title() {
 # Stages everything in a fix's worktree and checks it. The change must not be
 # empty, and it may touch .github/workflows/ only when $2 is true: a workflow
 # on a branch runs with the repository's secrets before review, so the owner
-# should see that flag in the prompt. Then the changed lines and the text ($3)
+# should see that flag in the prompt. It never touches a .claude/settings.json:
+# that file says what an agent may run without asking, kogut's own included, so
+# only the owner changes it, by hand. Then the changed lines and the text ($3)
 # are scanned with gitleaks.
 kogut_stage() {
-  local worktree="$1" workflows="$2" text="$3" changed
+  local worktree="$1" workflows="$2" text="$3" changed settings
   git -C "$worktree" add -A
   changed="$(git -C "$worktree" diff --cached --name-only --no-renames HEAD)"
   [ -n "$changed" ] || die "the fix changes nothing"
+  settings="$(grep -E '(^|/)\.claude/settings(\.local)?\.json$' <<<"$changed" | head -n 1)" || true
+  [ -z "$settings" ] || die "the fix changes $settings: what an agent may run is the owner's to set, by hand"
   if grep -q '^\.github/workflows/' <<<"$changed"; then
     [ "$workflows" = true ] || die "the fix changes .github/workflows/: pass --workflows"
   else
@@ -340,4 +344,18 @@ kogut_app_token() {
       '{repositories: [$r]} + (if $p == "" then {} else {permissions: ($p | fromjson)} end)')" \
     "https://api.github.com/app/installations/$installation/access_tokens" | jq -er '.token' ||
     die "GitHub refused an installation token for $repo${permissions:+ with $permissions: has the owner granted it to the App?}"
+}
+
+# Whether the owner has yet to install the App on a repository, asked with the
+# App's JWT. Prints why and succeeds when GitHub says it is not installed there,
+# the way kogut_held does, so a run over every repository can skip one that is
+# new to kogut and say so. Fails when it is installed, and when the question
+# cannot be asked (no key, no network): then the token request says what is wrong.
+kogut_app_missing() {
+  local jwt code
+  jwt="$(kogut_app_jwt 2>/dev/null)" || return 1
+  code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$(kogut_owner)/$1/installation" 2>/dev/null)" || return 1
+  [ "$code" = 404 ] || return 1
+  echo "the kogut App is not installed on $1"
 }
