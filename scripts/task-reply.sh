@@ -32,6 +32,7 @@ for arg in "$@"; do
   esac
 done
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 text="$KOGUT_ROOT/.kogut/outbox/tasks/$repo/$number.md"
 [ -s "$text" ] || die "the answer is missing: $text"
 if [ "$plan" = true ]; then

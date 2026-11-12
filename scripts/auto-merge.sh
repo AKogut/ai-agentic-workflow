@@ -36,7 +36,7 @@ fi
 limit="$(jq -r '.policy.auto_merge.limit_per_repo // empty' "$KOGUT_CONFIG")"
 [[ "$limit" =~ ^[1-9][0-9]*$ ]] || die "policy.auto_merge.limit_per_repo must be a positive number, so nothing merges"
 
-kogut_wait_online || die "GitHub cannot be reached or gh is not logged in; nothing merged"
+kogut_wait_online || die "GitHub cannot be reached, or it refused whom kogut reads as (policy.read_as); nothing merged"
 
 # A snapshot of its own, so the run's .kogut/state.json stays as it was.
 state="$(mktemp)"

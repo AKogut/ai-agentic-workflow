@@ -1,0 +1,69 @@
+{
+  "granted": {
+    "issues": "write",
+    "actions": "write",
+    "contents": "write",
+    "metadata": "read",
+    "workflows": "write",
+    "pull_requests": "write"
+  },
+  "granted_all": {
+    "issues": "write",
+    "actions": "write",
+    "contents": "write",
+    "metadata": "read",
+    "workflows": "write",
+    "pull_requests": "write",
+    "administration": "read",
+    "secrets": "read",
+    "vulnerability_alerts": "write"
+  },
+  "responses": {
+    "repo": {
+      "default_branch": "main",
+      "pushed_at": "2026-11-10T00:00:00Z",
+      "html_url": "https://github.com/example/flakemetry",
+      "allow_auto_merge": true,
+      "delete_branch_on_merge": true
+    },
+    "repo_as_app": {
+      "default_branch": "main",
+      "pushed_at": "2026-11-10T00:00:00Z",
+      "html_url": "https://github.com/example/flakemetry"
+    },
+    "commit": {
+      "sha": "1111111111111111111111111111111111111111",
+      "commit": { "committer": { "date": "2026-11-10T00:00:00Z" } }
+    },
+    "rules": [
+      { "type": "pull_request", "parameters": {} },
+      { "type": "required_status_checks", "parameters": { "required_status_checks": [{ "context": "ci" }] } }
+    ],
+    "workflows": {
+      "workflows": [{ "id": 1, "name": "CI", "path": ".github/workflows/ci.yml", "state": "active" }]
+    },
+    "runs": { "workflow_runs": [] },
+    "alerts": [],
+    "secrets": { "total_count": 0, "secrets": [] },
+    "pulls": { "data": { "repository": { "pullRequests": { "nodes": [] } } } },
+    "refs": {
+      "data": {
+        "repository": {
+          "refs": {
+            "pageInfo": { "hasNextPage": false, "endCursor": null },
+            "nodes": [
+              {
+                "name": "main",
+                "branchProtectionRule": null,
+                "rules": { "totalCount": 5 },
+                "target": { "oid": "1111111111111111111111111111111111111111", "committedDate": "2026-11-10T00:00:00Z" },
+                "associatedPullRequests": { "nodes": [] }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "list": []
+  }
+}

@@ -54,6 +54,7 @@ else
   [ "$workflows" = false ] || die "--workflows goes with --pr"
 fi
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 
 # A snapshot of its own, so the run's .kogut/state.json stays as it was.
 state="$(mktemp)"

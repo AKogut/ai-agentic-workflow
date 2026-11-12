@@ -72,7 +72,7 @@ flowchart LR
 kogut reads text written by strangers. Dependabot copies upstream release notes into its PRs verbatim, and CI logs can contain anything. The design assumes that text is hostile.
 
 - **Least privilege.** [`.claude/settings.json`](.claude/settings.json) allows only read-only commands and the kogut scripts. Repository edits, workflow changes and `gh pr merge --admin` are denied. Merges, fix PRs, issue changes and `git push` need the owner's approval, as do a `gh api` call that writes (a method, fields, an input file or GraphQL) and a `curl` that sends, uploads or saves data. Read-only `gh api` calls and `curl -s` reads from the npm and RubyGems registries run without asking.
-- **Its own identity.** On GitHub kogut acts as a GitHub App, `kogut-agent`. It can write code, pull requests, issues and workflow files, and run workflows, in the repositories it watches, and nothing else. It is not on any ruleset's bypass list, so unlike my own token it cannot merge past a red check. A script that acts on GitHub refuses to run without the App's token rather than fall back to mine. A run over every repository skips one the App is not installed on yet, and says so. The App's private key lives outside the repository with mode 600, and the model is denied from reading it.
+- **Its own identity.** On GitHub kogut acts as a GitHub App, `kogut-agent`. It can write code, pull requests, issues and workflow files, and run workflows, in the repositories it watches, and nothing else. It is not on any ruleset's bypass list, so unlike my own token it cannot merge past a red check. A script that acts on GitHub refuses to run without the App's token rather than fall back to mine. A run over every repository skips one the App is not installed on yet, and says so. Reads use my login by default; with `"read_as": "app"` in [`kogut.config.json`](kogut.config.json) they use a read-only token of the App too, and what that token may not read is reported as unreadable, never read with my login instead. The App's private key lives outside the repository with mode 600, and the model is denied from reading it.
 - **Policy in code.** The model can hold a PR back but cannot merge past a blocker. The rules are covered by [tests](tests/run.sh).
 - **Secrets stay local.** Discord webhooks live in a gitignored `.env` that the model is denied from reading. [`notify.sh`](scripts/notify.sh) accepts only Discord URLs and never prints them. Mentions are disabled, so quoted text cannot ping anyone.
 - **Updates are never run locally.** Dependabot branches are never installed on this machine. They run only in GitHub's CI. A fix that changes a manifest gets its lockfile regenerated in lockfile-only mode: no `node_modules`, no lifecycle scripts, no pnpmfile hooks, so no package code runs here.
@@ -108,6 +108,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Code is read from `origin`, never the working copy | A working copy may be on any branch with any local edits. |
 | Approvals are permission prompts | A sentence in a prompt can be argued with. An `ask` rule in the harness cannot. |
 | A GitHub App instead of my token | The history shows what the agent did and what I did. The App holds only the permissions kogut needs and cannot bypass a ruleset. |
+| Reading as the App is an opt-in | My login carries the admin bypass on every repository, the unattended job included, and over SSH `gh` cannot reach the keychain. A read-only token of the App has neither problem, but it reads only what I granted, so `./scripts/app.sh check` lists what is missing and I switch `read_as` once it is granted. Until then a section it cannot read says so, and an issue about it stays open. |
 | Fix commits built through the API | No git credentials on disk. The script checks that GitHub's tree hashes to the staged one, so the PR holds exactly the diff that was shown. |
 
 ## Quick start
@@ -178,7 +179,7 @@ scripts/daily.sh                the daily job: auto-merge, then the digest
 scripts/auto-merge.sh           merges one narrow tier with nobody watching; no model
 scripts/hold.sh                 the stop switch: a repository on hold gets no writes
 tests/run.sh                    policy tests against a fixed snapshot
-kogut.config.json               watched repositories and policy numbers
+kogut.config.json               watched repositories, policy numbers, and whom kogut reads as
 ```
 
 ## Development
@@ -221,6 +222,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Daily summary:** one message across every repository in a channel of its own: what waits for me, what is red, what the cooldown holds and until when, what merged on its own, and what is on hold
 - [x] **Its own repository:** kogut watches `ai-agentic-workflow` too, a repository new to kogut is skipped with the reason until it has the App and a channel, and no kogut PR may change what an agent is allowed to run
 - [x] **Cooldown for kogut's PRs:** a kogut PR whose lockfile takes in a release npm published less than three days ago waits, like a Dependabot PR, and says until when; whatever cannot be dated holds it
+- [x] **Reading as the App:** an opt-in that takes my login, and its admin bypass, out of every read
 
 ## License
 

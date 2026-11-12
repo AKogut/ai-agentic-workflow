@@ -32,6 +32,7 @@ for arg in "$@"; do
 done
 [ "${#names[@]}" -gt 0 ] || [ "$dry_run" = true ] || die "$usage"
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 
 # A name goes into a URL below, so only one that needs no encoding and cannot
 # walk out of refs/heads/ gets that far. A real branch with an odd name is the

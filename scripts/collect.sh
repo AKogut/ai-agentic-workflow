@@ -9,12 +9,17 @@
 # it to jq to browse.
 # Read-only — nothing on GitHub is changed. Besides GitHub it reads only the npm
 # registry, for the dates of the releases kogut's own PRs newly lock.
+#
+# It reads with the owner's gh login, or with policy.read_as "app" with a
+# read-only token of the App per repository. What that token may not read is
+# recorded as unreadable, the same as a failed read, and never read as the owner.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
 owner="$(kogut_owner)"
 window="$(kogut_policy run_window)"
+kogut_read_as >/dev/null
 
 repos=()
 if [ $# -gt 0 ]; then
@@ -134,11 +139,13 @@ branch_file() {
   return 2
 }
 
-# Raw state of one repository, as JSON on stdout.
+# Raw state of one repository, as JSON on stdout. It runs in a subshell of its
+# own, so a read token stays with its repository.
 collect_repo() {
   local repo="$1" full="$owner/$1" dir="$tmp/$1" branch id
   mkdir -p "$dir/runs"
 
+  kogut_read_env "$repo"
   gh api "repos/$full" >"$dir/repo.json"
   branch="$(jq -r '.default_branch' "$dir/repo.json")"
 
@@ -244,20 +251,26 @@ collect_repo() {
 
   # Required checks come from classic branch protection and from rulesets; the
   # rules endpoint returns only the rulesets that actually apply to the branch.
-  # Classic protection answers 404 for a branch without it, so its failure means
-  # nothing. The rules endpoint answers for every branch, so its failure is a
-  # failed read: the merge gate still sees no required checks and blocks, but it
-  # must not be reported as a gap.
-  local rules required_unread=false
+  # The rules endpoint answers for every branch, so its failure is a failed read:
+  # the merge gate still sees no required checks and blocks, but it must not be
+  # reported as a gap. Classic protection answers 404 for a branch without it,
+  # which means none; any other failure, such as the App reading without
+  # administration, leaves classic protection unknown, here and for the branches.
+  local rules classic required_unread=false protection_unread=false
   if ! rules="$(gh api "repos/$full/rules/branches/$branch" \
     --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]' 2>/dev/null)"; then
     rules='[]'
     required_unread=true
   fi
-  {
-    api_or '[]' "repos/$full/branches/$branch/protection/required_status_checks" --jq '[.checks[].context]'
-    printf '%s\n' "$rules"
-  } | jq -s 'add | unique' >"$dir/required.json"
+  if ! classic="$(gh api "repos/$full/branches/$branch/protection/required_status_checks" \
+    --jq '[.checks[].context]' 2>"$dir/classic.err")"; then
+    classic='[]'
+    if ! grep -q 'HTTP 404' "$dir/classic.err"; then
+      required_unread=true
+      protection_unread=true
+    fi
+  fi
+  printf '%s\n%s\n' "$classic" "$rules" | jq -s 'add | unique' >"$dir/required.json"
 
   # A repository can have more than one page of alerts. --jq runs once per
   # page, so it emits single alerts and jq -s gathers them.
@@ -289,10 +302,13 @@ collect_repo() {
   # repository with more than 100 branches is read in full, and about 2,200
   # nodes a page against GitHub's limit of 500,000. A branch with more than 20
   # PRs may lose its older ones, and without a match it stays. A failure leaves
-  # the status unavailable, and then nothing counts as prunable.
+  # the status unavailable, and then nothing counts as prunable. So does classic
+  # protection that could not be read above: a token that may not read it can
+  # get null for a branch's protection rule, and a protected branch would then
+  # look free to delete.
   local branches
   # shellcheck disable=SC2016 # these are GraphQL variables
-  if branches="$(gh api graphql --paginate -F owner="$owner" -F name="$repo" -f query='
+  if [ "$protection_unread" = false ] && branches="$(gh api graphql --paginate -F owner="$owner" -F name="$repo" -f query='
     query($owner: String!, $name: String!, $endCursor: String) {
       repository(owner: $owner, name: $name) {
         refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
@@ -445,8 +461,10 @@ collect_repo() {
 }
 
 # Node's release schedule, once per run. null when it cannot be read, and then
-# signals.jq judges no pin.
-node_schedule="$(api_or null -H 'Accept: application/vnd.github.raw' repos/nodejs/Release/contents/schedule.json)"
+# signals.jq judges no pin. It is public, so any of the repositories' read
+# tokens can read it.
+node_schedule="$(kogut_read_env "${repos[0]}" &&
+  api_or null -H 'Accept: application/vnd.github.raw' repos/nodejs/Release/contents/schedule.json)" || node_schedule=null
 jq -e 'type == "object"' <<<"$node_schedule" >/dev/null 2>&1 || node_schedule=null
 
 # One background job per repository. A repository that fails to collect is

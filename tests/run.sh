@@ -1473,6 +1473,11 @@ kogut_app_token() {
   [ "$1" != "${REFUSE:-}" ] || die "GitHub refused an installation token for $1"
   echo test-token
 }
+kogut_app_read_token() {
+  local r
+  for r in "$@"; do [ "$r" != ai-agentic-workflow ] || die "the kogut App is not installed on $r"; done
+  echo test-read-token
+}
 EOF
 cat >"$self_dir/scripts/collect.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -1562,8 +1567,9 @@ check "notify.sh --check shows it without a channel, and passes" \
 check "app.sh check shows it as not installed, with the link, and passes" \
   '.status == 0 and (.out | contains("none  ai-agentic-workflow → kogut-agent is not installed there yet")
      and contains("to install it on ai-agentic-workflow: https://github.com/apps/kogut-agent/installations/new")
-     and contains("granted: metadata: read") and (contains("FAIL") | not))
-   and ([.out | scan("(?m)^ok    ")] | length) == '"$others" "$(self_run "$self_dir/scripts/app.sh" check)"
+     and contains("granted: metadata: read") and (contains("FAIL") | not)
+     and contains("ok    a read token for every repository kogut-agent is installed on"))
+   and ([.out | scan("(?m)^ok    [a-z0-9-]+$")] | length) == '"$others" "$(self_run "$self_dir/scripts/app.sh" check)"
 check "app.sh check still fails a token refused where the App is installed" \
   '.status == 1 and (.out | contains("FAIL  flakemetry"))' "$(REFUSE=flakemetry self_run "$self_dir/scripts/app.sh" check)"
 
@@ -1674,6 +1680,128 @@ check "nothing new is nothing to wait for" '. == {count: 0, youngest: null, rece
 check "a cooldown that is not a number of days fails" '.status != 0' \
   "$(status=0; dated three </dev/null >/dev/null 2>&1 || status=$?; jq -cn --argjson status "$status" '{$status}')"
 rm -rf "$npm_cache"
+
+echo
+echo "reading as the App"
+# policy.read_as, with configs of the test's own. KOGUT_CONFIG is set after
+# lib.sh is sourced, and the App's key points nowhere, so nothing reaches GitHub.
+ra_dir="$(mktemp -d)"
+ra_fixture="$PWD/tests/fixtures/read-as.json"
+jq 'del(.policy.read_as)' kogut.config.json >"$ra_dir/none.json"
+jq '.policy.read_as = "app"' kogut.config.json >"$ra_dir/app.json"
+jq '.policy.read_as = "both"' kogut.config.json >"$ra_dir/bad.json"
+read_as_of() { bash -c 'source scripts/lib.sh; KOGUT_CONFIG="$1"; kogut_read_as' _ "$1" 2>&1 | jq -Rs .; }
+check "reads go as the owner unless the config says app" \
+  '. == ["owner\n", "app\n"]' "$(printf '%s %s' "$(read_as_of "$ra_dir/none.json")" "$(read_as_of "$ra_dir/app.json")" | jq -s .)"
+check "any other value is refused" \
+  'contains("policy.read_as must be \"owner\" or \"app\", not \"both\"")' "$(read_as_of "$ra_dir/bad.json")"
+grants_of() { bash -c 'source scripts/lib.sh; kogut_read_grants "$1"' _ "$(jq -c ".$1" "$ra_fixture")"; }
+check "a read token asks for what the App was granted, at read level and never more" \
+  '. == {metadata: "read", contents: "read", pull_requests: "read", issues: "read", actions: "read"}' "$(grants_of granted)"
+check "once granted, administration, secrets and alerts are read too, still at read level" \
+  'keys == ["actions", "administration", "contents", "issues", "metadata", "pull_requests", "secrets", "vulnerability_alerts"]
+   and all(.[]; . == "read")' "$(grants_of granted_all)"
+env_of() {
+  KOGUT_APP_KEY=/nonexistent bash -c 'unset GH_TOKEN; source scripts/lib.sh; KOGUT_CONFIG="$1"
+    kogut_read_env flakemetry; echo "GH_TOKEN=${GH_TOKEN-unset}"' _ "$1" 2>&1 | jq -Rs .
+}
+check "reading as the owner leaves gh as it was" '. == "GH_TOKEN=unset\n"' "$(env_of "$ra_dir/none.json")"
+check "without a read token the caller stops, and gh is never left to the owner's login" \
+  'contains("private key is missing") and (contains("GH_TOKEN=") | not)' "$(env_of "$ra_dir/app.json")"
+
+# collect.sh in a copy, with the read token and gh faked. The fake logs the
+# token each call carries and answers as GitHub answers the App's read token
+# today: no administration, secrets or Dependabot alerts, and the repository's
+# settings left out.
+mkdir "$ra_dir/bin" "$ra_dir/copy"
+cp -R scripts "$ra_dir/copy/"
+echo 'kogut_app_read_token() { [ -z "${FAKE_REFUSE:-}" ] || die "GitHub refused a read token for $*"; echo read-token; }' \
+  >>"$ra_dir/copy/scripts/lib.sh"
+cat >"$ra_dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "${GH_TOKEN:-no-token} $(tr '\n' ' ' <<<"$*")" >>"$GH_LOG"
+filter="" prev=""
+for arg in "$@"; do
+  [ "$prev" != --jq ] || filter="$arg"
+  prev="$arg"
+done
+answer() { jq -rc --arg k "$1" ".responses[\$k] | ${filter:-.}" "$FIXTURE"; }
+refuse() {
+  echo "{\"message\": \"$2\"}"
+  echo "gh: $2 (HTTP $1)" >&2
+  exit 1
+}
+app() { [ -n "${GH_TOKEN:-}" ]; }
+case "$*" in
+  *"/protection/required_status_checks"*)
+    if app; then refuse 403 "Resource not accessible by integration"; fi
+    refuse 404 "Branch not protected" ;;
+  *"/dependabot/alerts"*) if app; then refuse 403 "Resource not accessible by integration"; fi; answer alerts ;;
+  *"/actions/secrets"*) if app; then refuse 403 "Resource not accessible by integration"; fi; answer secrets ;;
+  *"/rules/branches/"*) answer rules ;;
+  *"/runs?"*) answer runs ;;
+  *"/actions/workflows?"*) answer workflows ;;
+  *"/contents/"*) refuse 404 "Not Found" ;;
+  *"/commits/"*) answer commit ;;
+  *"refs(refPrefix"*) answer refs ;;
+  *graphql*) answer pulls ;;
+  "pr list"* | "issue list"*) answer list ;;
+  "api repos/"*) if app; then answer repo_as_app; else answer repo; fi ;;
+  *) refuse 404 "Not Found" ;;
+esac
+EOF
+chmod +x "$ra_dir/bin/gh"
+# ra_collect <config> [refuse]: collects flakemetry; the outcome is {status, state, log, err}.
+ra_collect() {
+  local status=0
+  cp "$1" "$ra_dir/copy/kogut.config.json"
+  rm -f "$ra_dir/state.json"
+  : >"$ra_dir/gh.log"
+  env -u GH_TOKEN FAKE_REFUSE="${2:-}" GH_LOG="$ra_dir/gh.log" FIXTURE="$ra_fixture" KOGUT_STATE="$ra_dir/state.json" \
+    PATH="$ra_dir/bin:$PATH" "$ra_dir/copy/scripts/collect.sh" flakemetry >/dev/null 2>"$ra_dir/err" || status=$?
+  [ -s "$ra_dir/state.json" ] || echo null >"$ra_dir/state.json"
+  jq -n --argjson status "$status" --slurpfile state "$ra_dir/state.json" --rawfile log "$ra_dir/gh.log" --rawfile err "$ra_dir/err" \
+    '{status: $status, state: $state[0], log: ($log | split("\n") | map(select(. != ""))), err: $err}'
+}
+ra_owner="$(ra_collect "$ra_dir/none.json")"
+ra_app="$(ra_collect "$ra_dir/app.json")"
+check "by default every read goes with the owner's login, as before" \
+  '.status == 0 and (.log | length > 10 and all(startswith("no-token ")))
+   and (.state.repos[0] | .alerts.status == "ok" and .secrets.status == "ok" and .branches.status == "ok"
+     and .required_checks_unread == false and .repo.allow_auto_merge == true)' "$ra_owner"
+check "with read_as app every read carries the App's read token" \
+  '.status == 0 and (.log | length > 10 and all(startswith("read-token ")))' "$ra_app"
+check "what the App may not read is recorded as unreadable, and what it may is read" \
+  '.state.repos[0] | .alerts.status == "unavailable" and .secrets.status == "unavailable"
+   and .required_checks == ["ci"] and .required_checks_unread and .branches == {status: "unavailable", items: []}
+   and .repo.allow_auto_merge == null and .workflows[0].name == "CI"' "$ra_app"
+check "unreadable settings are no hygiene gap, and unreadable alerts still say so" \
+  '.repos[0].hygiene_issues | (any(.[]; test("auto-merge is disabled|branches are not deleted|no required status checks")) | not)
+   and index("Dependabot alerts could not be read") != null' \
+  "$(jq '.state' <<<"$ra_app" | KOGUT_NOW=2026-11-12T12:00:00Z jq -f scripts/signals.jq)"
+check "a refused read token leaves the repository unread, with no call to GitHub at all" \
+  '.status == 0 and .log == [] and (.state.repos[0].error | contains("refused a read token for flakemetry"))' \
+  "$(ra_collect "$ra_dir/app.json" yes)"
+check "an unknown read_as stops collect.sh before it reads anything" \
+  '.status != 0 and .log == [] and .state == null and (.err | contains("policy.read_as must be"))' \
+  "$(ra_collect "$ra_dir/bad.json")"
+check "a setting GitHub did not show is no gap, and one that is off still is" \
+  '(repo("alpha") | .hygiene_issues == []) and (repo("beta") | any(.hygiene_issues[]; . == "auto-merge is disabled"))' \
+  "$(jq '(.repos[] | select(.name == "alpha") | .repo) |= (.allow_auto_merge = null | .delete_branch_on_merge = null)
+    | (.repos[] | select(.name == "beta") | .repo.allow_auto_merge) = false' tests/fixtures/state.json |
+    KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+ra_plan() {
+  jq -c -n -L scripts --argjson d "$1" --argjson texts '{}' \
+    --argjson issues '[{"number": 5, "title": "Security: critical and high Dependabot alerts", "url": "u5", "key": "alerts", "body": "old"}]' \
+    'include "issues"; plan($d; $issues; $texts; "2026-11-12"; "https://example.com/kogut")'
+}
+check "the alerts issue stays open while the alerts could not be read" \
+  '.[0] | .action == "keep" and .number == 5' \
+  "$(ra_plan '{"findings": [], "hygiene": {"dependabot_alerts": "unavailable"}, "runtime": {"judged": true}, "secrets": {"status": "ok"}}')"
+check "and closes once they read clean" \
+  '.[0] | .action == "close" and (.comment | contains("no critical or high Dependabot alerts are open"))' \
+  "$(ra_plan '{"findings": [], "hygiene": {"dependabot_alerts": "ok"}, "runtime": {"judged": true}, "secrets": {"status": "ok"}}')"
+rm -rf "$ra_dir"
 
 echo
 echo "$passed passed, $failed failed"

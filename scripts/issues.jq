@@ -71,8 +71,8 @@ def closing($today):
 #   keep    the issue already reads as it should
 #   skip    a major the model wrote nothing about
 #   close   an issue whose finding is gone. A runtime finding kogut could not
-#           judge this run, or a secrets finding when the list could not be
-#           read, is not gone, so its issue is kept.
+#           judge this run, or a secrets or alerts finding when the list could
+#           not be read, is not gone, so its issue is kept.
 def plan($d; $issues; $texts; $today; $home):
   [ ($d.findings[] as $f
       | ([$issues[] | select(.key == $f.key)][0]) as $i
@@ -89,6 +89,7 @@ def plan($d; $issues; $texts; $today; $home):
       | select([$d.findings[].key] | index($i.key) | not)
       | if (.key == "runtime:node" and ($d.runtime.judged | not))
           or (.key == "secrets:age" and $d.secrets.status != "ok")
+          or (.key == "alerts" and $d.hygiene.dependabot_alerts == "unavailable")
         then {action: "keep", number, title, url}
         else {action: "close", number, title, url, comment: closing($today)} end)
   ];
