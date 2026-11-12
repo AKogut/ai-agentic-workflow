@@ -12,9 +12,10 @@
 # the version the repository's packageManager names, and npm has to write the
 # lockfile version already there, so the lockfile keeps its format. The
 # script refuses when the fix touches .npmrc or a pnpmfile, which change how
-# the package manager runs. Afterwards it lists the versions that changed and,
-# for the critical and high alerts of that project, what the lockfile now
-# holds next to the versions that fix them.
+# the package manager runs. Afterwards it lists the versions that changed, the
+# releases newly locked that npm published less than cooldown_days ago, which
+# the PR will wait for, and, for the critical and high alerts of that project,
+# what the lockfile now holds next to the versions that fix them.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -64,8 +65,10 @@ versions() {
   fi
 }
 
-before="$(mktemp)"
-trap 'rm -f "$before"' EXIT
+# The copy keeps the lockfile's name, which tells releases.sh its format.
+before_dir="$(mktemp -d)"
+trap 'rm -rf "$before_dir"' EXIT
+before="$before_dir/$lock"
 cp "$project/$lock" "$before"
 existing_modules="$(find "$worktree" -name node_modules -type d -prune 2>/dev/null | sort)"
 
@@ -97,6 +100,25 @@ jq -r -n --argjson a "$(versions "$before")" --argjson b "$(versions "$project/$
   ($a + $b | keys) as $names
   | [$names[] | select($a[.] != $b[.]) | "\(.): \($a[.] // [] | join(", ") | if . == "" then "-" else . end) → \($b[.] // [] | join(", ") | if . == "" then "-" else . end)"]
   | if . == [] then "(none)" else .[] end'
+
+# The releases the lockfile locks now and did not before, dated by npm. Once the
+# PR is open it waits until the youngest is cooldown_days old, as kogut_prs[] in
+# signals.jq decides, and whatever npm cannot date holds it.
+cooldown="$(kogut_policy cooldown_days)"
+echo "--- releases newly locked (the PR waits until each is $cooldown days old)"
+if dated="$("$KOGUT_ROOT/scripts/releases.sh" new "$before" "$project/$lock" |
+  "$KOGUT_ROOT/scripts/releases.sh" published "$cooldown")"; then
+  jq -r --argjson days "$cooldown" '
+    def clears: .published_at | fromdateiso8601 + $days * 86400 | todate;
+    if .count == 0 then "(none)" else
+      "\(.count) new; the youngest: \(.youngest | if . then "\(.name) \(.version), published \(.published_at)" else "none dated" end)",
+      (.recent[:10][] | "inside the cooldown: \(.name) \(.version), published \(.published_at), clears \(clears)"),
+      (if (.recent | length) > 10 then "inside the cooldown: and \((.recent | length) - 10) more" else empty end),
+      (.unread[] | "not dated, which holds the PR: \(.)")
+    end' <<<"$dated"
+else
+  echo "(the new releases could not be dated, which holds the PR until they can be)"
+fi
 
 # The project's critical and high alerts, from the run's snapshot, against
 # what the lockfile holds now. GitHub closes an alert itself once the fix is

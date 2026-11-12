@@ -16,7 +16,8 @@
 #   in digest.jq, critical and high alerts, and PRs with red checks that the
 #   cooldown list does not already show.
 # - In cooldown: each PR the cooldown holds and when it is free, earliest first,
-#   with whatever else holds it.
+#   with whatever else holds it. A kogut PR waiting for what its lockfile locks
+#   is here too, since it is not the owner's to review yet.
 # - Auto-merged today: what auto-merge.sh merged, or refused, today.
 # - On hold, and the repositories that could not be read.
 
@@ -53,11 +54,18 @@ def red_cause: if (.cause.signature // null) == null then "" else ": \(.cause.ki
      + [.kogut_prs[] | select(.checks == "red" and .needs != "owner") | "\($n) \(link): kogut's PR, checks red"])[]
   ] as $red
 
-| ([$read[] | .name as $n | .dependabot_prs[] | select(.in_cooldown == true)
-    | [.blockers[] | select(startswith("younger than") | not)] as $also
-    | {at: (.cooldown_ends // "~"),
-       text: ("\($n) \(link): free \(if .cooldown_ends then "from \(.cooldown_ends | utc)" else "after the cooldown" end)"
-         + (if $also == [] then "" else "; also \($also | join("; "))" end))}]
+| ([$read[] | .name as $n
+    | (.dependabot_prs[] | select(.in_cooldown == true)
+        | [.blockers[] | select(startswith("younger than") | not)] as $also
+        | {at: (.cooldown_ends // "~"),
+           text: ("\($n) \(link): free \(if .cooldown_ends then "from \(.cooldown_ends | utc)" else "after the cooldown" end)"
+             + (if $also == [] then "" else "; also \($also | join("; "))" end))}),
+      # What could not be dated holds a kogut PR with no end, as in digest.jq.
+      (.kogut_prs[] | select(.needs == "cooldown")
+        | (if (.cooldown.unread // []) != [] then null else .cooldown.until // null end) as $until
+        | {at: ($until // "~"),
+           text: ("\($n) \(link): kogut's PR, "
+             + (if $until then "free from \($until | utc)" else "held until every release it locks can be dated" end))})]
   | sort_by(.at) | map(.text)) as $cooldown
 
 # Today's records, the latest for each PR, since a later run can settle a refusal.

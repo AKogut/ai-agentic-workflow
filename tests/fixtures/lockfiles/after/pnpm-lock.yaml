@@ -1,0 +1,67 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      from-git:
+        specifier: github:example/from-git#abc123
+        version: https://codeload.github.com/example/from-git/tar.gz/abc123
+      local-tool:
+        specifier: file:tools/local
+        version: file:tools/local
+      unchanged:
+        specifier: ^1.0.0
+        version: 1.0.0
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@22.0.0)
+
+packages:
+
+  '@rolldown/binding-darwin-arm64@1.2.19':
+    resolution: {integrity: sha512-EEEE}
+    cpu: [arm64]
+    os: [darwin]
+
+  from-git@https://codeload.github.com/example/from-git/tar.gz/abc123:
+    resolution: {tarball: https://codeload.github.com/example/from-git/tar.gz/abc123}
+    version: 0.0.1
+
+  local-tool@file:tools/local:
+    resolution: {directory: tools/local, type: directory}
+
+  rolldown@1.2.19:
+    resolution: {integrity: sha512-FFFF}
+    hasBin: true
+
+  unchanged@1.0.0:
+    resolution: {integrity: sha512-CCCC}
+
+  vite@8.3.8:
+    resolution: {integrity: sha512-GGGG}
+    hasBin: true
+
+snapshots:
+
+  '@rolldown/binding-darwin-arm64@1.2.19':
+    optional: true
+
+  from-git@https://codeload.github.com/example/from-git/tar.gz/abc123: {}
+
+  local-tool@file:tools/local: {}
+
+  rolldown@1.2.19:
+    optionalDependencies:
+      '@rolldown/binding-darwin-arm64': 1.2.19
+
+  unchanged@1.0.0: {}
+
+  vite@8.3.8(@types/node@22.0.0):
+    dependencies:
+      rolldown: 1.2.19
+      snapshot-only: 9.9.9

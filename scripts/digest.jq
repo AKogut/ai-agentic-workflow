@@ -7,10 +7,11 @@
 # waits for the owner or for a /kogut run, green otherwise. A Node line on
 # maintenance is only mentioned; past its end of life or outside engines, it
 # makes the report yellow, and so does a secret old enough that it may have
-# expired. A hold and what auto-merge did today are only said, and do not change
-# the colour. PRs and issues show as numbers, without their titles, so no text
-# from anyone else reaches a channel. The top of the input carries holds,
-# {repo: why}, and auto_merged, today's records from auto-merge.sh.
+# expired. A hold, what auto-merge did today and a kogut PR waiting for the
+# cooldown on what it locks are only said, and do not change the colour. PRs
+# and issues show as numbers, without their titles, so no text from anyone else
+# reaches a channel. The top of the input carries holds, {repo: why}, and
+# auto_merged, today's records from auto-merge.sh.
 
 def link: "[#\(.number)](\(.url))";
 def links: map(link) | join(", ");
@@ -31,6 +32,7 @@ def report($root):
     | [.dependabot_prs[] | select((.ready_to_merge | not) and (cooldown_only | not))] as $stuck
     | [.kogut_prs[] | select(.needs | IN("review", "owner"))] as $for_owner
     | [.kogut_prs[] | select(.needs | IN("fix-ci", "answer"))] as $for_kogut
+    | [.kogut_prs[] | select(.needs == "cooldown")] as $kogut_waiting
     # kogut's own issues show as their alerts and majors; these are the owner's.
     | [.tasks[] | select((.auto | not) and .needs == "start")] as $tasks
     | [.tasks[] | select((.auto | not) and .needs == "owner")] as $answered
@@ -78,6 +80,9 @@ def report($root):
              else ": old enough that they may have expired." end) end),
         line("Secrets"; if .secrets.status == "unavailable" then "could not be read." else "" end),
         line("In cooldown"; if $waiting == [] then "" else plural($waiting | length; "PR") end),
+        line("kogut PRs in cooldown"; $kogut_waiting | map(link
+          + (if (.cooldown.unread // []) != [] then " (not every release it locks could be dated)"
+             else " until \(.cooldown.until // "" | .[0:10])" end)) | join(", ")),
         line("Merged branches to prune"; (.branches.prunable // []) | length | if . == 0 then "" else tostring end)
       ] as $lines
     | {
@@ -91,6 +96,7 @@ def report($root):
                 else "*Daily digest: the merges below are all kogut changed.*" end]
           + (if ($lines | map(select(
                  (startswith("**On hold") or startswith("**Auto-merged") or startswith("**In cooldown")
+                   or startswith("**kogut PRs in cooldown")
                    or startswith("**Merged branches") or startswith("**Secrets:")
                    or (startswith("**Node") and $rt.flagged != true)) | not))) == []
              then ["Nothing needs you."] else [] end)
