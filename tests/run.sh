@@ -54,21 +54,21 @@ echo
 echo "security fixes and the cooldown"
 check "a young PR that fixes a high alert skips the cooldown" \
   'pr("delta"; 19) | .age_days < 3 and .ready_to_merge and .blockers == []
-     and .directory == "/app/gateway" and .fixes == [{package: "undici", severity: "high", count: 1}]'
+     and .directory == "/app/gateway" and .fixes == [{package: "undici", severity: "high", count: 1, alerts: [2]}]'
 check "an alert in another directory is not fixed by the PR" \
   'pr("delta"; 20) | .directory == "/" and .fixes == [] and .blockers == ["younger than the 3-day cooldown"]'
 check "a fix for a medium alert still waits, and versions compare by number" \
-  'pr("delta"; 21) | .fixes == [{package: "qs", severity: "medium", count: 1}]
+  'pr("delta"; 21) | .fixes == [{package: "qs", severity: "medium", count: 1, alerts: [3]}]
      and .blockers == ["younger than the 3-day cooldown"]'
 check "each update is matched against the alerts on its own version line" \
-  'pr("delta"; 22) | .fixes == [{package: "brace-expansion", severity: "high", count: 2}] and .ready_to_merge'
+  'pr("delta"; 22) | .fixes == [{package: "brace-expansion", severity: "high", count: 2, alerts: [4, 5]}] and .ready_to_merge'
 check "a pre-release still inside the range, or an alert without a range, fixes nothing" \
   '[pr("delta"; 23, 25) | .fixes == [] and .blockers == ["younger than the 3-day cooldown"]] == [true, true]'
 check "a group names its one directory in the body, and across several it has none" \
   '[pr("delta"; 26, 24) | .directory] == ["/app", null]
      and (pr("delta"; 26) | .ready_to_merge) and (pr("delta"; 24) | .fixes == [] and (.ready_to_merge | not))'
 check "a group's fixes are read from its table, past the quoted blocks" \
-  'pr("delta"; 26) | .fixes == [{package: "ms", severity: "high", count: 1}]'
+  'pr("delta"; 26) | .fixes == [{package: "ms", severity: "high", count: 1, alerts: [9]}]'
 check "an update claimed in quoted release notes fixes nothing" \
   'pr("delta"; 27) | (.updates | map(.package)) == ["tar"] and .fixes == []
      and .blockers == ["younger than the 3-day cooldown"]'
@@ -238,8 +238,8 @@ without_19_24="$(jq "$delta_only"' | (.repos[] | select(.name == "delta") | .prs
 check "alerts the PRs fix are covered, and kogut leaves their issue alone" \
   'repo("delta") | .alerts.uncovered == [] and .tasks == []
    and (.findings[] | select(.key == "alerts") | .facts.uncovered) == []' "$fixed_only"
-check "a group across several directories covers what it moves, though fixes[] cannot claim it" \
-  'repo("delta") | .alerts.uncovered == [] and (.dependabot_prs[] | select(.number == 24) | .fixes) == []' "$without_19"
+check "a group across several directories covers nothing, as its fixes[] claims nothing" \
+  'repo("delta") | .alerts.uncovered == ["undici"] and (.dependabot_prs[] | select(.number == 24) | .fixes) == []' "$without_19"
 check "the same update in another directory does not cover an alert" \
   'repo("delta") | .alerts.uncovered == ["undici"]' "$without_19_24"
 
@@ -1162,6 +1162,28 @@ check "every call carries the App's token" \
   'split("\n") | map(select(. != "")) | length > 0 and all(startswith("test-token "))' \
   "$(jq -Rs . "$issues_log")"
 rm -rf "$issues_dir"
+
+echo
+echo "alerts no open PR fixes"
+uncovered="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq tests/fixtures/uncovered.json)"
+check "a group across several directories covers nothing, even an alert its update moves out of range" \
+  'repo("split") | .alerts.uncovered == ["undici"]
+   and (.dependabot_prs[0] | .directory == null and .fixes == [])' "$uncovered"
+check "kogut takes on its alerts issue while an alert is in no PR's fixes[]" \
+  'task("split"; 50) | .auto and .needs == "start" and .finding' "$uncovered"
+check "the same update in one named directory fixes the alert, and kogut leaves the issue alone" \
+  'repo("single") | .alerts.uncovered == [] and .tasks == []
+   and (.dependabot_prs[0] | .fixes) == [{package: "undici", severity: "high", count: 1, alerts: [1]}]' "$uncovered"
+check "fixes[] names the alerts it fixes, and a range it leaves open keeps the package uncovered" \
+  '(pr("ranges"; 1) | .fixes) == [{package: "brace-expansion", severity: "high", count: 1, alerts: [1]}]
+   and (repo("ranges") | .alerts.uncovered | index("brace-expansion") != null)' "$uncovered"
+check "a fix in one directory leaves the package uncovered in another" \
+  '(pr("ranges"; 2) | .fixes[0].alerts) == [3] and (repo("ranges") | .alerts.uncovered | index("ms") != null)' "$uncovered"
+check "an alert without a number is never covered" \
+  '(pr("ranges"; 3) | .fixes[0].alerts) == [null] and (repo("ranges") | .alerts.uncovered | index("qs") != null)' "$uncovered"
+check "a critical alert a PR fixes is covered, and the finding lists the rest worst first" \
+  'repo("ranges") | .alerts.uncovered == ["brace-expansion", "ms", "qs"]
+   and (.findings[] | select(.key == "alerts") | .facts.uncovered) == ["brace-expansion", "ms", "qs"]' "$uncovered"
 
 echo
 echo "$passed passed, $failed failed"

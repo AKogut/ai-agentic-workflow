@@ -125,27 +125,28 @@ def moved_out($a; $updates):
   any($updates[]; .package == $a.package
     and (.from | in_range($a.vulnerable)) and (.to | in_range($a.vulnerable) | not));
 
-# The open alerts a PR fixes, per package: one of its updates moves the package
-# out of the vulnerable range, in the alert's directory.
+# The open alerts a PR fixes, per package, with their numbers: one of its
+# updates moves the package out of the vulnerable range, in the alert's directory.
 def fixed_alerts($dir; $updates; $alerts):
   [$alerts[] | . as $a
     | select($dir != null and ($a.manifest | manifest_dir) == $dir and moved_out($a; $updates))]
   | group_by(.package)
-  | map({package: .[0].package, severity: (max_by(.severity | severity_rank) | .severity), count: length})
+  | map({package: .[0].package, severity: (max_by(.severity | severity_rank) | .severity), count: length,
+         alerts: (map(.number) | sort)})
   | sort_by(-(.severity | severity_rank), .package);
 
 # The packages with a critical or high alert that no open Dependabot PR fixes,
-# so a fix for them has to come from kogut. The input is the PRs. It uses the
-# rule behind fixes[], so a PR that only names a package, moves it within the
-# vulnerable range or updates another directory does not cover the alert. A
-# group across several directories names no directory, so here it counts for any
-# of them: fixes[] must never invent a fix, because that skips the cooldown, but
-# here a wrong answer would send kogut after what Dependabot is already fixing.
+# so a fix for them has to come from kogut. The input is the Dependabot PRs as
+# dependabot_pr judged them, and an alert is covered only when its number is in
+# one of their fixes[], so one rule decides both this and the cooldown. A PR that
+# only names a package, moves it within the vulnerable range or updates another
+# directory covers nothing, and neither does a group across several
+# directories, which names no directory. An alert without a number is never
+# covered.
 def uncovered_packages($alerts):
-  map({dir: pr_directory, updates: own_updates}) as $prs
-  | [$alerts[] | . as $a | select(.severity | IN("critical", "high"))
-      | select(any($prs[]; (.dir == null or .dir == ($a.manifest | manifest_dir)) and moved_out($a; .updates)) | not)
-      | .package]
+  [.[].fixes[].alerts[] | select(. != null)] as $fixed
+  | [$alerts[] | select(.severity | IN("critical", "high"))
+      | select(.number | IN($fixed[]) | not) | .package]
   | unique;
 
 # The metadata Dependabot writes at the end of its commit message:
@@ -404,9 +405,10 @@ def task($owner; $app; $kogut_prs; $auto):
 
 # The tasks of one repository: the issues the owner labelled, plus kogut's own
 # issues that it takes on unasked (agreed with the owner on 2026-10-30): its
-# alerts issue while no Dependabot PR fixes a critical or high alert, and an
-# issue it opened for a major, which means a migration. Only issues the App
-# filed itself count, so a stranger cannot forge one by copying the marker.
+# alerts issue while a critical or high alert is in no open Dependabot PR's
+# fixes[] (uncovered), and an issue it opened for a major, which means a
+# migration. Only issues the App filed itself count, so a stranger cannot forge
+# one by copying the marker.
 # The feature requests of one repository, as feature.jq decides. Only an open
 # issue with the owner's label gets this far; the label is checked again on GitHub
 # before anything is posted or opened.
@@ -753,13 +755,14 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
     | [.workflows[] | select(.state == "active") | . + {health: health($r.runs[.id | tostring] // [])}] as $active
     # Snapshots taken before last_commit_at was collected fall back to pushed_at.
     | (.repo.last_commit_at // .repo.pushed_at | days_since) as $idle
+    | ([.prs[] | select(.author.login == "app/dependabot")
+        | dependabot_pr($required; $r.alerts.items // []; $p)
+          + dependabot_command($owner; $r.repo.last_commit_at)] | split_majors) as $dependabot
     | {
         name,
         url: .repo.html_url,
         default_branch: .repo.default_branch,
-        dependabot_prs: ([.prs[] | select(.author.login == "app/dependabot")
-          | dependabot_pr($required; $r.alerts.items // []; $p)
-            + dependabot_command($owner; $r.repo.last_commit_at)] | split_majors),
+        dependabot_prs: $dependabot,
         other_prs: [.prs[] | select(.author.login | IN("app/dependabot", "app/\($app)") | not) | other_pr($p)],
         kogut_prs: [.prs[] | select(.author.login == "app/\($app)") | kogut_pr($owner; $app; $p)],
         branches: branch_report($r),
@@ -783,7 +786,7 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
           action: (if .state == "disabled_inactivity" then
             {name: "enable", reason: "GitHub disabled it after 60 days without activity"} else null end)}],
         alerts: ((.alerts.items | alert_summary)
-          + {uncovered: ([.prs[] | select(.author.login == "app/dependabot")] | uncovered_packages($r.alerts.items // []))}),
+          + {uncovered: ($dependabot | uncovered_packages($r.alerts.items // []))}),
         runtime: runtime_signal($node_schedule),
         secrets: secrets_signal($p),
         hygiene: {
