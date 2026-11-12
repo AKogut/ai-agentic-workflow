@@ -215,6 +215,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Pruning branches:** a branch goes only when its tip is exactly the head of a PR merged into the default branch, by `kogut-agent[bot]`, and only the ones I name in the approval
 - [x] **Hold:** a stop switch per repository, in code, that fails closed
 - [x] **Unattended merges:** patches to direct dev dependencies past the cooldown, without me and without the model
+- [x] **One review across repositories:** an update that arrives in several repositories at once is judged once and reported together, and I still approve each repository's merge
 
 ## License
 

@@ -39,7 +39,7 @@ This is the sweep, for `/kogut` and `/kogut analyze`. `/kogut fix` follows "Fixe
 
 Run `./scripts/collect.sh` followed by the repository names, if any. It prints the signals digest and saves the raw snapshot to `.kogut/state.json` (query it with `jq` when you need a field the digest leaves out). Per repository:
 
-- `dependabot_prs[]`: `semver` (`major`, `minor` or `patch`) is the riskiest change in the PR. Below 1.0 a minor counts as `major`. `bump` is the update named in the title, null for group PRs. `updates[]` lists the updates Dependabot names in the body. `belongs_with` lists the other PRs that take the same npm scope to a new major. `command`, `dependabot_note` and `asked` are for commands to Dependabot (step 3). `auto_merge` (`eligible`, `why`) is what the scheduled job would do with the PR, and is no reason to merge or hold it back yourself. `directory` is the one the PR updates, and `fixes[]` the open alerts it fixes, per package and worst first, with their numbers in `alerts`: one of its updates moves the package in the alert's directory out of the vulnerable range. A group across several directories names no directory, so it fixes nothing. A PR that fixes an alert at `policy.cooldown_skip_severity` (high) or worse skips the cooldown. Also `checks`, `blockers` and `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
+- `dependabot_prs[]`: `semver` (`major`, `minor` or `patch`) is the riskiest change in the PR. Below 1.0 a minor counts as `major`. `bump` is the update named in the title, null for group PRs. `updates[]` lists the updates Dependabot names in the body. `belongs_with` lists the other PRs that take the same npm scope to a new major. `command`, `dependabot_note` and `asked` are for commands to Dependabot (step 3). `auto_merge` (`eligible`, `why`) is what the scheduled job would do with the PR, and is no reason to merge or hold it back yourself. `directory` is the one the PR updates, and `fixes[]` the open alerts it fixes, per package and worst first, with their numbers in `alerts`: one of its updates moves the package in the alert's directory out of the vulnerable range. A group across several directories names no directory, so it fixes nothing. A PR that fixes an alert at `policy.cooldown_skip_severity` (high) or worse skips the cooldown. `cooldown_ends` is when the cooldown lets a held PR go. Also `checks`, `blockers` and `ready_to_merge`. The blockers are the merge policy. You may hold back a ready PR; you never count a blocked one as mergeable.
 - `other_prs[]`: the owner's own PRs.
 - `tasks[]`: issues the owner labelled `kogut-task`, and kogut's own issues it takes on unasked (`auto`), each with who added the label, the kogut `prs` that name it, whether it is a kogut issue (`finding`) and what it `needs` (see "Tasks"). The sweep only reports them; `/kogut tasks` takes them on.
 - `kogut_prs[]`: the PRs kogut opened, each with `checks`, `failing`, `attempts` (follow-up commits so far), whether it is a `feature`, the owner's unanswered `feedback[]` and what it `needs` (step 4).
@@ -53,6 +53,8 @@ Run `./scripts/collect.sh` followed by the repository names, if any. It prints t
 - `findings[]`: what kogut tracks as issues (step 4), each with a stable `key`, its `kind`, whether it is `auto`, a `title`, the `facts` and the `slug` of its diagnosis file.
 - `error`: collection failed for that repository. Report it and move on.
 
+Across repositories, `shared_updates[]` lists each update that Dependabot PRs carry in more than one repository: one `package` going to one version, `to`, with the `repos` and every PR that carries it, a group PR included. A PR whose title names its update carries that one, and a group carries the updates in its `updates[]`. Each PR entry gives its `repo`, `number`, `title`, `url` and `directory`, the update's own `from` and `semver` in that PR, the PR's riskiest change (`pr_semver`), and the gate's `ready_to_merge`, `blockers`, `in_cooldown` and `cooldown_ends` for that PR alone. A collection of one repository has none.
+
 ### 2. Analyse
 
 Spend effort where judgement is needed and stay brief elsewhere.
@@ -61,6 +63,7 @@ Spend effort where judgement is needed and stay brief elsewhere.
 - **Dependabot, ready, major** (`semver` is `major`). Read the release notes (`gh pr view <n> -R <owner>/<repo> --json body`) and find the breaking changes. Check whether the code uses what changed: `./scripts/repo.sh <repo> grep '<regex>'`. If nothing the code uses is affected, it is "would merge"; say what you checked. If something used is affected, it "needs you": name the API and the files.
 - **Group PRs.** `semver` already reflects every update in `updates[]`. If it is `major`, review the major updates as above.
 - **Majors split across PRs** (`belongs_with` is not empty). They are one upgrade, and the gate blocks each part. Review them together, and name the Dependabot group that would keep them in one PR. Unscoped packages that belong together (for example `react` and `react-dom`) are not detected; point them out yourself.
+- **The same update in several repositories** (`shared_updates[]`). The release notes are the same everywhere, so read them once, from the oldest `from` among its PRs to `to`, and judge the update once. Read them even for a minor or a patch: the update reaches several repositories at once, and one reading covers them all. A PR that starts from an older version also takes the releases in between, and the same update can be a major in one repository and a patch in another. For a major, read the breaking changes once, then check each repository's code on its own, as above. The verdict covers this update only: a group PR's other updates, and a `pr_semver` above the update's `semver`, are judged as usual. When the update turns a PR red and the failure comes from the update itself, say so on every PR that carries it. The list is a reporting aid and never a reason to merge: each PR keeps its own `blockers` and `ready_to_merge`, and one ready PR says nothing about the others.
 - **Dependabot, blocked.** Name the blocker. If checks are red, diagnose as for CI.
 - **CI failing on the default branch.** Run `./scripts/failed-log.sh <repo> <run-id>` with `latest_run.id`. For a failing PR check, the run id is the number after `/runs/` in its URL. Find the cause and classify it:
   - `external`: a service, registry or site the job depends on is down.
@@ -86,6 +89,8 @@ Spend effort where judgement is needed and stay brief elsewhere.
 ### 3. Merge (not with `analyze`)
 
 For the Dependabot PRs you judged "would merge", run `./scripts/merge-dependabot.sh <repo> <n> [<n> ...]`, with one repository's PRs in one call, so the owner approves them together by number. A major you reviewed is a call of its own, with `--major`; the script refuses a major without it, a non-major with it, and `--major` with a list. Each call asks the owner for approval. Allow about 30 seconds per PR in the call's timeout.
+
+An update you judged once across repositories still merges one repository at a time: a call cannot span repositories, so each repository's ready PRs that carry it go into that repository's call, next to its other "would merge" PRs. Only the PRs that are `ready_to_merge` go in; one still in its cooldown waits for a later run. A PR whose `pr_semver` is `major` is still a call of its own.
 
 - The script collects the repository afresh for each PR and merges only when the gate says `ready_to_merge`, pinned to the head commit it judged. If a merge left the next PR reading `mergeable: UNKNOWN`, it waits for GitHub to settle. When it refuses a PR, the rest of the list goes on and the script fails at the end, naming what it left. Report its reasons; do not try another way.
 - If the owner declines a call, report its PRs as declined and do not ask again in this run.
@@ -141,9 +146,12 @@ Each repository's `findings[]` is what kogut tracks as GitHub issues: one issue 
 
 ### 6. Report
 
-The report is your whole final message, with nothing before it. Write it in English. Start with one line summing up all repositories, then give one block per repository, most urgent first:
+The report is your whole final message, with nothing before it. Write it in English. Start with one line summing up all repositories. When `shared_updates[]` is not empty, follow it with a block headed "Across repositories": one line per shared update, with the package and version, your one verdict, and each PR that carries it as a link, with what holds it back (for a PR in its cooldown, the date in `cooldown_ends`). Then give one block per repository, most urgent first:
 
 ```
+Across repositories
+fast-xml-parser 5.12.0, minor, would merge: <repo> #462 (checks are red), #458 (group, cooldown until 12 Nov), <repo> #255 (cooldown until 15 Nov)
+
 🔴 <repo>
 kogut merged: #390 (…), #391 (…, fixes a high alert in …)
 kogut auto-merged: #388 (…), refused: #389 (…)
@@ -164,6 +172,8 @@ TL;DR: …
 - 🟢: nothing to do. The block is a single line.
 
 With `analyze`, or for a PR the owner declined or the script refused, write "kogut would merge" instead of "kogut merged", and say why it was not merged. With `analyze`, commands are "kogut would ask Dependabot" and runs are "kogut would run".
+
+In a repository's block, a PR that carries a shared update names it, gives the one verdict and links the PRs that carry it elsewhere, in a few words, because that block alone goes to the repository's Discord channel.
 
 If a line has nothing to say, leave it out. Do not write "none". Every PR and run is a markdown link. A block should be readable in ten seconds. After all the blocks, add a "Details" section, but only for diagnoses and major reviews whose evidence does not fit in a block.
 
