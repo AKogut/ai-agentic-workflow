@@ -2078,6 +2078,30 @@ check "reading as the owner counts every repository, as before" \
      and (.log | length > 0 and all(startswith("no-token ")))
      and ([.out | scan("(?m)^\\| [a-z0-9-]+ \\|")] | length) == '"$pg_others"' + 1' "$(pg_run owner)"
 rm -rf "$pg_dir"
+
+echo
+echo "local clones"
+# A kogut clone of the test's own with a worktree elsewhere, and a config of its
+# own, so the answers depend on neither this clone nor this machine.
+lc_dir="$(cd "$(mktemp -d)" && pwd -P)"
+git -c init.defaultBranch=main init -q "$lc_dir/base/kogut"
+git -C "$lc_dir/base/kogut" -c user.name=kogut -c user.email=kogut@example.invalid commit -q --allow-empty -m init
+git -C "$lc_dir/base/kogut" worktree add -q --detach "$lc_dir/elsewhere/wt"
+mkdir -p "$lc_dir/plain"
+jq -n '{repos: [{name: "self", path: "."}, {name: "sibling", path: "../sibling"}, {name: "dotted", path: "./../sibling"},
+  {name: "up", path: "../../up"}, {name: "home", path: "~/clones/x"}, {name: "absolute", path: "/srv/clones/x"}]}' >"$lc_dir/config.json"
+clones_of() { bash -c 'source scripts/lib.sh; KOGUT_ROOT="$1"; KOGUT_CONFIG="$2"; shift 2; for r; do kogut_repo_path "$r"; done' _ "$1" "$lc_dir/config.json" self sibling dotted up home absolute | jq -Rs 'split("\n")[:-1]'; }
+check "a relative path is next to kogut's clone, and ~ and / paths are as written" \
+  '. == ["'"$lc_dir"'/base/kogut", "'"$lc_dir"'/base/sibling", "'"$lc_dir"'/base/sibling", "'"$lc_dir"'/up", "'"$HOME"'/clones/x", "/srv/clones/x"]' \
+  "$(clones_of "$lc_dir/base/kogut")"
+check "from a worktree, a relative path is still next to the main working copy" \
+  '. == ["'"$lc_dir"'/base/kogut", "'"$lc_dir"'/base/sibling", "'"$lc_dir"'/base/sibling", "'"$lc_dir"'/up", "'"$HOME"'/clones/x", "/srv/clones/x"]' \
+  "$(clones_of "$lc_dir/elsewhere/wt")"
+check "outside git, a relative path is next to kogut's own folder" \
+  '.[0:2] == ["'"$lc_dir"'/plain", "'"$lc_dir"'/sibling"]' "$(clones_of "$lc_dir/plain")"
+check "every watched repository's clone is given relative to kogut's own" \
+  'all(.repos[]; .path == "." or (.path | test("^\\.\\./[a-z0-9-]+$")))' "$(cat kogut.config.json)"
+rm -rf "$lc_dir"
 echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
