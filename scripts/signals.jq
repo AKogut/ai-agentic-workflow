@@ -211,6 +211,8 @@ def dependabot_pr($required; $alerts; $p):
       # A run started on the branch has the repository's secrets, which
       # Dependabot's own runs do not, so it waits for the cooldown like a merge.
       in_cooldown: $held,
+      # When the cooldown ends, while it holds the PR back.
+      cooldown_ends: (if $held then (.createdAt | fromdateiso8601) + $p.cooldown_days * 86400 | todate else null end),
       bump: $bump,
       updates: $updates,
       semver: $semver,
@@ -252,6 +254,28 @@ def split_majors:
           .blockers += ["major split across PRs: take it together with \($with | map("#\(.)") | join(", "))"]
         end
       | .ready_to_merge = (.blockers | length == 0));
+
+# The same update in several repositories: one package taken to one version by
+# Dependabot PRs in more than one of them. Its release notes are the same
+# everywhere, so the model reads and judges them once, and each repository's
+# merge is still a call of its own. It is a reporting aid and never a reason to
+# merge: every PR keeps the gate's verdict on it alone. A PR whose title names
+# its update carries that one only, since any other "Updates" line in its body
+# comes from quoted release notes; a group carries the updates its body lists.
+# `from` and `semver` are this update's in the PR, and `pr_semver` is the PR's
+# riskiest change, which decides --major. The input is the digest's repositories.
+def shared_updates:
+  [.[] | select(.error == null) | .name as $repo | .dependabot_prs[] | . as $pr
+    | (if .bump then [.bump] else .updates end)[]
+    | {package, to,
+       pr: (($pr | {repo: $repo, number, title, url, directory}) + {from, semver}
+         + ($pr | {pr_semver: .semver, ready_to_merge, blockers, in_cooldown, cooldown_ends}))}]
+  | group_by([.package, .to])
+  | map(select(map(.pr.repo) | unique | length > 1)
+      | {package: .[0].package, to: .[0].to,
+         repos: (map(.pr.repo) | unique),
+         prs: (map(.pr) | unique_by([.repo, .number]))})
+  | sort_by(.package, (.to | version_key));
 
 # GitHub names the same App three ways: "app/<slug>" for a PR's author,
 # "<slug>[bot]" for a commit's and "<slug>" for a comment's.
@@ -818,3 +842,4 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
     | .dependabot_prs |= map(. + {auto_merge: auto_merge_rule($p; $red)})
   end]
 }
+| .shared_updates = (.repos | shared_updates)

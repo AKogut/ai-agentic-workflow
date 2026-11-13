@@ -1276,5 +1276,38 @@ rc_check "a run with no failed job reads nothing past its list of jobs" \
 rm -rf "$rc_dir"
 
 echo
+echo "the same update across repositories"
+su_fixture=tests/fixtures/shared-updates.json
+su="$(KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq "$su_fixture")"
+su_helpers='def shared($p; $to): .shared_updates[] | select(.package == $p and .to == $to);
+  def carriers($p; $to): [shared($p; $to).prs[] | "\(.repo)#\(.number) \(.directory)"];'
+su_check() { check "$1" "$su_helpers $2" "$su"; }
+su_check "one package to one version in several repositories is one entry, a group PR included" \
+  'shared("fast-xml-parser"; "5.12.0").repos == ["one", "two"]
+   and carriers("fast-xml-parser"; "5.12.0") == ["one#1 /", "one#2 /", "two#10 /app"]'
+su_check "each PR keeps the gate's verdict on it alone" \
+  '[shared("fast-xml-parser"; "5.12.0").prs[] | [.ready_to_merge, .blockers]]
+   == [[true, []], [false, ["younger than the 3-day cooldown"]], [false, ["younger than the 3-day cooldown"]]]'
+su_check "every field is the PR's own, as its repository lists it" \
+  '[.shared_updates[].prs[] as $e | pr($e.repo; $e.number)
+    | [.title, .url, .directory, .ready_to_merge, .blockers, .in_cooldown, .cooldown_ends, .semver]
+      == ($e | [.title, .url, .directory, .ready_to_merge, .blockers, .in_cooldown, .cooldown_ends, .pr_semver])] | all'
+su_check "a PR in its cooldown says when it ends, and one past it says nothing" \
+  '[shared("fast-xml-parser"; "5.12.0").prs[] | .cooldown_ends] == [null, "2026-11-01T12:00:00Z", "2026-11-01T12:00:00Z"]'
+su_check "each PR has its own starting version, and the PR's riskiest change is apart from the update's" \
+  '[shared("vite"; "8.3.6").prs[] | [.from, .semver, .pr_semver]] == [["7.3.7", "major", "major"], ["8.3.5", "patch", "patch"]]
+   and [shared("fast-xml-parser"; "5.12.0").prs[] | select(.number == 2) | [.semver, .pr_semver]] == [["minor", "major"]]'
+su_check "another target version is another update" \
+  '[.shared_updates[] | select(.package == "fast-xml-parser") | .to] == ["5.12.0"]'
+su_check "the same update twice in one repository is not shared" 'all(.shared_updates[]; .package != "twice")'
+su_check "an Updates line quoted in a PR whose title names its update shares nothing" \
+  '(pr("one"; 4).updates | map(.package)) == ["left-pad"] and all(.shared_updates[]; .package != "left-pad")'
+su_check "only Dependabot's PRs count" 'all(.shared_updates[]; .package != "right-pad")'
+su_check "a repository that could not be collected is left out, and the entries come by package" \
+  'repo("broken").error != null and [.shared_updates[].package] == ["fast-xml-parser", "vite"]'
+check "one repository alone shares nothing" '.shared_updates == []' \
+  "$(jq '.repos |= map(select(.name == "one"))' "$su_fixture" | KOGUT_NOW=2026-10-30T12:00:00Z jq -f scripts/signals.jq)"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
