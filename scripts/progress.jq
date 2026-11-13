@@ -3,10 +3,12 @@
 # report never rests on the model's arithmetic.
 #
 # Input (built by progress.sh): since, until, owner, app, repos (the watched
-# names), kogut (search results: every PR and issue the App opened), merged
-# (search results: PRs merged since the window began) and figures (per
-# repository: the App's comments, the commands to Dependabot under the owner's
-# login, and the Dependabot alerts, fixed and open).
+# names that were read), left_out (the ones that were not, each with why, so
+# the report says what its figures do not cover), kogut (search results: every
+# PR and issue the App opened), merged (search results: PRs merged since the
+# window began) and figures (per repository: the App's comments, the commands
+# to Dependabot under the owner's login, and the Dependabot alerts, fixed and
+# open).
 # With --arg format json the figures are printed, otherwise a markdown report.
 
 def is_app($app): IN($app, "\($app)[bot]", "app/\($app)");
@@ -83,7 +85,7 @@ def figures:
   . as $in
   | [$in.repos[] as $name | repo_figures($in; $name)] as $repos
   | {
-      since, until, repos: $repos,
+      since, until, repos: $repos, left_out: ($in.left_out // []),
       totals: (reduce ($repos[] | {kogut, owner, alerts: (.alerts | {fixed, open})}) as $r (null;
         if . == null then $r else plus($r) end))
     };
@@ -123,6 +125,9 @@ def markdown:
     (.repos[]
       | (if .alerts.status == "ok" then total(.alerts.fixed) | tostring else "n/a" end) as $closed
       | (if .alerts.status == "ok" then serious(.alerts.open) else "n/a" end) as $open
-      | "| \(.name) | \(.kogut.merged) | \(.kogut.prs.opened) (\(.kogut.prs.merged)) | \(.kogut.issues.opened) / \(.kogut.issues.closed) | \(.kogut.comments) | \($closed) | \($open) | \(.owner.merged) (\(.owner.kogut_fixes)) |");
+      | "| \(.name) | \(.kogut.merged) | \(.kogut.prs.opened) (\(.kogut.prs.merged)) | \(.kogut.issues.opened) / \(.kogut.issues.closed) | \(.kogut.comments) | \($closed) | \($open) | \(.owner.merged) (\(.owner.kogut_fixes)) |"),
+    (.left_out | if . == [] then empty else
+      "",
+      "Not counted: \(map("\(.name) (\(.why))") | join("; ")). The figures above cover the other repositories only." end);
 
 figures | if $format == "json" then . else markdown end

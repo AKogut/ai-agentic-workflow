@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Pushes a follow-up commit to one of kogut's own open PRs, as the kogut App,
-# and says on the PR what changed and why. It is for a PR whose checks are red
-# or whose review asked for changes. Start the worktree with
-# `fix-start.sh <repo> --pr <number>`.
+# and says on the PR what changed and why. It is for a PR whose checks are red,
+# whose review asked for changes, or that conflicts with its base. Start the
+# worktree with `fix-start.sh <repo> --pr <number>`, and with `--refresh` for a
+# PR in conflict.
 #
 #   ./scripts/update-fix-pr.sh <repo> <slug> [--workflows] [--dry-run]
 #   ./scripts/update-fix-pr.sh <repo> <slug> --comment-only [--dry-run]
@@ -15,6 +16,13 @@
 # takes over. A feature's PR has its own limit, policy.feature.followup_limit,
 # because CI is the only place its code runs, and it still may not change
 # .github/workflows/ or grow past policy.feature's size limits.
+#
+# After `fix-start.sh --refresh` the commit is a merge: its first parent is the
+# PR's head and its second the commit of the base branch that was merged into
+# the worktree, which must be on that branch on GitHub now. The branch still
+# moves only forward, and the PR is then measured from that commit, so the
+# conflict is gone. The checks and the diff shown cover what the PR holds
+# against that base, not what the base brought in. It counts as a follow-up.
 #
 # With --comment-only the whole file is the comment and nothing is committed:
 # the answer to a question, or to a request that needs no change. A comment is
@@ -47,6 +55,22 @@ marker="$worktree.pr"
 number="$(jq -r '.number' "$marker")"
 head="$(jq -r '.head' "$marker")"
 [ "$(git -C "$worktree" rev-parse HEAD)" = "$head" ] || die "the worktree is no longer at the head it started from"
+# A refresh: the commit of the base branch that fix-start.sh merged in.
+base="$(jq -r '.base // empty' "$marker")"
+base_branch="$(jq -r '.base_branch // empty' "$marker")"
+from=HEAD
+if [ -n "$base" ]; then
+  [[ "$base" =~ ^[0-9a-f]{40}$ ]] && [ -n "$base_branch" ] || die "the refresh of $repo/$slug names no commit of a base branch; start again"
+  [ "$comment_only" = false ] || die "a refresh pushes a commit: drop --comment-only"
+  from="$base"
+  while IFS= read -r path; do
+    [ -n "$path" ] && [ -f "$worktree/$path" ] || continue
+    ! grep -qE '^(<<<<<<<|>>>>>>>) ' "$worktree/$path" || die "$path still has conflict markers: resolve it first"
+  done < <(jq -r '.conflicts[]?' "$marker")
+  git -C "$worktree" add -A
+  ! git -C "$worktree" diff --cached --quiet "$base" ||
+    die "nothing of #$number is left once $base_branch is merged in: its change is already there, so answer with a comment instead"
+fi
 
 if [ "$comment_only" = true ]; then
   [ "$workflows" = false ] || die "$usage"
@@ -58,23 +82,36 @@ if [ "$comment_only" = true ]; then
 else
   title="$(kogut_fix_title "$text")"
   comment="$(tail -n +3 "$text")"
-  kogut_stage "$worktree" "$workflows" "$text"
+  kogut_stage "$worktree" "$workflows" "$text" "$from"
 fi
 
 full="$(kogut_owner)/$repo"
 kogut_read_env "$repo"
 branch="kogut/$slug"
 limit="$(kogut_policy followup_limit)"
-pr="$(gh pr view "$number" -R "$full" --json state,author,headRefName,headRefOid,url,commits,body,files)"
+pr="$(gh pr view "$number" -R "$full" --json state,author,headRefName,headRefOid,baseRefName,url,commits,body,files)"
 [ "$(jq -r '.state' <<<"$pr")" = OPEN ] || die "#$number is not open"
 [ "$(jq -r '.author.login' <<<"$pr")" = "app/$(kogut_app_slug)" ] || die "#$number is not kogut's PR"
 [ "$(jq -r '.headRefName' <<<"$pr")" = "$branch" ] || die "#$number is not on $branch"
 [ "$(jq -r '.headRefOid' <<<"$pr")" = "$head" ] || die "#$number moved since the worktree started; start again"
+if [ -n "$base" ]; then
+  [ "$(jq -r '.baseRefName' <<<"$pr")" = "$base_branch" ] || die "#$number no longer targets $base_branch; start again"
+  # The second parent must be a commit of the PR's base branch as GitHub has it
+  # now, so a refresh brings in that branch and nothing else.
+  case "$(gh api "repos/$full/compare/$base...$base_branch" --jq .status)" in
+    identical | ahead) ;;
+    *) die "${base:0:7} is not on $base_branch; start again" ;;
+  esac
+fi
 if jq -e '(.body // "") | test("<!-- kogut-feature: [0-9]+ -->")' <<<"$pr" >/dev/null; then
   limit="$(jq -r '.policy.feature.followup_limit // empty' "$KOGUT_CONFIG")"
   [ -n "$limit" ] || die "policy.feature.followup_limit is not set"
   [ "$workflows" = false ] || die "a feature cannot change .github/workflows/: that stays the owner's"
-  [ "$comment_only" = true ] || kogut_feature_size "$worktree" "$pr"
+  if [ -n "$base" ]; then
+    kogut_feature_size "$worktree" '{}' "$base"
+  elif [ "$comment_only" = false ]; then
+    kogut_feature_size "$worktree" "$pr"
+  fi
 fi
 # The PR's first commit opened it; every later one of kogut's is an attempt.
 attempts="$(jq --arg bot "$(kogut_app_bot)" '[.commits[] | select(any(.authors[]; .login == $bot))] | length - 1' <<<"$pr")"
@@ -92,9 +129,10 @@ if [ "$dry_run" = true ] && [ "$comment_only" = true ]; then
 fi
 if [ "$dry_run" = true ]; then
   echo "follow-up $attempt of $limit on $(jq -r '.url' <<<"$pr"), as $(kogut_app_bot)"
+  [ -z "$base" ] || echo "refresh: a merge of $base_branch at ${base:0:7}; the files below are all the PR holds against it"
   echo "commit: $title"
   echo "--- files"
-  kogut_show_diff "$worktree"
+  kogut_show_diff "$worktree" "$from"
   echo "--- comment"
   printf '%s\n' "$comment"
   echo "not pushed: --dry-run"
@@ -110,9 +148,9 @@ export GH_TOKEN="$token"
 if [ "$comment_only" = true ]; then
   note="kogut answered without a change."
 else
-  commit="$(kogut_api_commit "$full" "$worktree" "$title")"
+  commit="$(kogut_api_commit "$full" "$worktree" "$title" "$base")"
   gh api -X PATCH "repos/$full/git/refs/heads/$branch" -f sha="$commit" -F force=false >/dev/null
-  note="kogut pushed ${commit:0:7} to this PR (follow-up $attempt of $limit)."
+  note="kogut pushed ${commit:0:7} to this PR (follow-up $attempt of $limit)${base:+, a merge of $base_branch at ${base:0:7}}."
 fi
 jq -n --arg c "$comment" --arg note "$note" '{body: "\($c)\n\n<sub>\($note)</sub>"}' |
   gh api -X POST "repos/$full/issues/$number/comments" --input - >/dev/null
@@ -125,5 +163,5 @@ rm -f "$marker"
 if [ "$comment_only" = true ]; then
   echo "answered: $(jq -r '.url' <<<"$pr") (a comment, as $(kogut_app_bot))"
 else
-  echo "pushed: ${commit:0:7} to $(jq -r '.url' <<<"$pr") (follow-up $attempt of $limit, as $(kogut_app_bot))"
+  echo "pushed: ${commit:0:7} to $(jq -r '.url' <<<"$pr") (follow-up $attempt of $limit, as $(kogut_app_bot)${base:+, merging $base_branch at ${base:0:7}})"
 fi

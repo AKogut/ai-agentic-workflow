@@ -7,6 +7,11 @@
 #
 # Prints a markdown report, or with --json the figures behind it; progress.jq
 # does the counting. The window is the last 7 days unless given. Read-only.
+#
+# With policy.read_as "app", a repository the App is not installed on has no
+# token to read with. A run over every repository leaves it out, says so on
+# stderr and in the report, and counts the rest. One named on the command line
+# still stops the run, because the owner asked for that repository.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -39,8 +44,18 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+left_out='[]'
 if [ "$named" -eq 0 ]; then
-  while IFS= read -r r; do repos+=("$r"); done < <(kogut_repos)
+  read_as="$(kogut_read_as)"
+  while IFS= read -r r; do
+    if [ "$read_as" = app ] && why="$(kogut_app_missing "$r")"; then
+      echo "$r: left out, $why" >&2
+      left_out="$(jq -c --arg n "$r" --arg w "$why" '. + [{name: $n, why: $w}]' <<<"$left_out")"
+      continue
+    fi
+    repos+=("$r")
+  done < <(kogut_repos)
+  [ "${#repos[@]}" -gt 0 ] || die "the kogut App is installed on no watched repository, so there is nothing to read as the App"
 fi
 [ -n "$since" ] || since="$(jq -rn --argjson d "$days" '(now - $d * 86400) | strftime("%Y-%m-%d")')"
 # With policy.read_as "app" one read token covers the repositories reported, so
@@ -117,9 +132,9 @@ for pid in "${pids[@]}"; do wait "$pid" || die "collecting a repository's commen
 
 for r in "${repos[@]}"; do cat "$tmp/$r.figures.json"; done | jq -s . >"$tmp/figures.json"
 jq -n --arg since "$since" --arg owner "$owner" --arg app "$slug" \
-  --argjson repos "$(printf '%s\n' "${repos[@]}" | jq -R . | jq -sc .)" \
+  --argjson repos "$(printf '%s\n' "${repos[@]}" | jq -R . | jq -sc .)" --argjson left_out "$left_out" \
   --slurpfile kogut "$tmp/kogut.json" --slurpfile merged "$tmp/merged.json" --slurpfile figures "$tmp/figures.json" \
-  '{since: $since, until: (now | strftime("%Y-%m-%d")), owner: $owner, app: $app, repos: $repos,
+  '{since: $since, until: (now | strftime("%Y-%m-%d")), owner: $owner, app: $app, repos: $repos, left_out: $left_out,
     kogut: $kogut[0], merged: $merged[0], figures: $figures[0]}' >"$tmp/input.json"
 
 jq -r --arg format "$format" -f "$KOGUT_ROOT/scripts/progress.jq" "$tmp/input.json"

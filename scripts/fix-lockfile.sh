@@ -33,7 +33,12 @@ project="$worktree/$dir"
 [ -d "$project" ] || die "no directory $dir in the worktree"
 
 # Configuration that changes how the package manager runs is not a fix's to change.
-if git -C "$worktree" status --porcelain --untracked-files=all | sed 's/^...//' |
+# In a refresh the change is measured from the base that was merged in, whose
+# own changes are not the fix's.
+from=HEAD
+[ ! -f "$worktree.pr" ] || from="$(jq -r '.base // "HEAD"' "$worktree.pr")"
+if { git -C "$worktree" diff --name-only --no-renames "$from"
+  git -C "$worktree" ls-files --others --exclude-standard; } |
   grep -qE '(^|/)(\.npmrc|\.pnpmfile\.c?js|\.pnpmfile\.mjs|\.yarnrc(\.yml)?)$'; then
   die "the fix changes package manager configuration (.npmrc or a pnpmfile); refusing to run it"
 fi

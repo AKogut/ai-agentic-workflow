@@ -395,6 +395,10 @@ def release_cooldown($p):
 # approval asks for nothing. Each follow-up commit is one more attempt, and
 # past the limit the owner takes over, so kogut cannot loop on a PR it cannot
 # fix. A green PR still in its cooldown is not the owner's to review yet.
+# Neither is one in conflict with its base: GitHub runs no checks on it, so
+# what its checks last said is about an older merge, and kogut refreshes it
+# first. The owner's words still come before that, and UNKNOWN is not a
+# conflict: GitHub has not worked it out yet.
 def kogut_pr($owner; $app; $p):
   . as $pr
   | checks as $c
@@ -413,6 +417,7 @@ def kogut_pr($owner; $app; $p):
   # A feature's PR has a limit of its own, because CI is the only place its code runs.
   | ($pr.body // "" | test("<!-- kogut-feature: [0-9]+ -->")) as $feature
   | (if $feature then $p.feature.followup_limit // $p.followup_limit else $p.followup_limit end) as $limit
+  | ($pr.mergeable == "CONFLICTING") as $conflict
   | {
       number: $pr.number, title: $pr.title, url: $pr.url,
       branch: $pr.headRefName,
@@ -425,8 +430,9 @@ def kogut_pr($owner; $app; $p):
       feedback: $feedback,
       cooldown: $cooldown,
       needs: (
-        if ($state == "red" or $feedback != []) and $attempts >= $limit then "owner"
+        if ($state == "red" or $feedback != [] or $conflict) and $attempts >= $limit then "owner"
         elif $feedback != [] then "answer"
+        elif $conflict then "refresh"
         elif $state == "red" then "fix-ci"
         elif $state == "green" and $cooldown.held == true then "cooldown"
         elif $state == "green" then "review"
