@@ -101,7 +101,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | Unattended merges for one narrow tier | Five `@types/node` patches should not wait for me to come back at a given hour. A launchd job with no model merges patches to direct dev dependencies past the cooldown, when the title and Dependabot's own commit metadata both say so and the default branch is green. I gave up reviewing those, knowingly: a bad patch that outlasts the cooldown and passes CI lands without anyone looking. Everything else still asks. |
 | Features need a plan I approved | kogut started as maintenance only. A feature takes judgement, so it goes through its own lane: a plan on the issue, code only after my label, and a draft PR that CI alone has run. It stays small enough to review, and I merge it. |
 | A stop switch in code, not in a note | When I work in a repository, kogut stays out. `hold.sh` makes every writing script refuse it, and a damaged switch holds everything rather than nothing. |
-| A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub. Everything that acts stays in `/kogut`. |
+| A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub, and an optional channel gets one summary of all of them: what waits for me, what is red, what the cooldown holds and until when. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
 | One sweep instead of webhooks | Six repositories don't justify a workflow in each. One pass reads them all. |
 | Code is read from `origin`, never the working copy | A working copy may be on any branch with any local edits. |
@@ -113,7 +113,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 
 ```sh
 git clone https://github.com/AKogut/ai-agentic-workflow.git && cd ai-agentic-workflow
-cp .env.example .env              # one Discord webhook per repository
+cp .env.example .env              # one Discord webhook per repository, and one for the summary if wanted
 ./scripts/notify.sh --check       # checks every webhook without posting
 ./scripts/app.sh manifest         # registers the GitHub App kogut acts as
 ./scripts/app.sh check            # once it is installed: a token for every repository
@@ -171,6 +171,7 @@ scripts/repo.sh                 grep / show / log on origin's default branch
 scripts/notify.sh               Discord delivery: mentions off, URLs never printed
 scripts/digest.sh               the daily digest: collect, render, post; no model, read-only on GitHub
 scripts/digest.jq               renders the digest, and sets each report's colour
+scripts/summary.jq              renders the one summary of every repository for the summary channel
 scripts/digest-schedule.sh      puts the daily job on launchd, or takes it off
 scripts/daily.sh                the daily job: auto-merge, then the digest
 scripts/auto-merge.sh           merges one narrow tier with nobody watching; no model
@@ -216,6 +217,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Hold:** a stop switch per repository, in code, that fails closed
 - [x] **Unattended merges:** patches to direct dev dependencies past the cooldown, without me and without the model
 - [x] **One review across repositories:** an update that arrives in several repositories at once is judged once and reported together, and I still approve each repository's merge
+- [x] **Daily summary:** one message across every repository in a channel of its own: what waits for me, what is red, what the cooldown holds and until when, what merged on its own, and what is on hold
 
 ## License
 
