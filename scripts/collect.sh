@@ -30,11 +30,12 @@ trap 'rm -rf "$tmp"' EXIT
 
 # Why the latest run of a red workflow failed, as {kind, signature}. A finished
 # run's text never changes, so the answer is kept per run attempt and per version
-# of the table: a merge collects once per PR and must not download logs each time.
+# of the table and of the script that picks the jobs it reads: a merge collects
+# once per PR and must not download logs each time.
 causes_cache="$KOGUT_ROOT/.kogut/causes"
 mkdir -p "$causes_cache"
 find "$causes_cache" -type f -mtime +30 -delete 2>/dev/null || true
-causes_table="$(cksum <"$KOGUT_ROOT/scripts/causes.jq" | awk '{ print $1 }')"
+causes_table="$(cat "$KOGUT_ROOT/scripts/causes.jq" "$KOGUT_ROOT/scripts/run-cause.sh" | cksum | awk '{ print $1 }')"
 run_cause() {
   local cached="$causes_cache/$1-$2-$3-$causes_table.json" out="" status=0
   if [ -s "$cached" ]; then

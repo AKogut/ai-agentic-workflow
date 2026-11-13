@@ -1,0 +1,111 @@
+{
+  "about": "GitHub's answers to scripts/run-cause.sh, served by the fake gh in tests/run.sh. Each run's jobs are what the jobs API returns; a job's annotations, size (Content-Length of its log) and log are what the other three calls return. annotations \"unreadable\" fails that read, and expired answers HTTP 410 for the log.",
+  "runs": {
+    "42583637532": {
+      "about": "ephemeral Ephemeral environment, 42583637532: kind's download failed its checksum in all five cluster jobs, and the cause stayed unknown while only three were read",
+      "jobs": [
+        { "id": 129049067296, "conclusion": "success", "steps": [{ "name": "Typecheck and build", "conclusion": "success" }] },
+        { "id": 129049713221, "conclusion": "success", "steps": [{ "name": "Package notes-service", "conclusion": "success" }] },
+        {
+          "id": 129049947117, "conclusion": "failure",
+          "steps": [{ "name": "Create kind cluster", "conclusion": "failure" }, { "name": "Tear it down", "conclusion": "success" }],
+          "annotations": [], "size": 21991,
+          "log": "2026-11-09T08:12:02.2140000Z Installing kind...\n2026-11-09T08:12:02.2147812Z sha256sum: WARNING: 1 computed checksum did NOT match\n2026-11-09T08:12:02.2150234Z kind-linux-amd64: FAILED\n"
+        },
+        {
+          "id": 129049947133, "conclusion": "failure",
+          "steps": [{ "name": "Create kind cluster", "conclusion": "failure" }, { "name": "Tear it down, and prove the volume went with it", "conclusion": "failure" }],
+          "annotations": [{ "annotation_level": "failure", "message": "Process completed with exit code 1." }], "size": 29064,
+          "log": "2026-11-09T08:12:02.4404243Z sha256sum: WARNING: 1 computed checksum did NOT match\n2026-11-09T08:12:02.4404867Z kind-linux-amd64: FAILED\n2026-11-09T08:12:05.7273288Z ##[error]Process completed with exit code 1.\n"
+        },
+        {
+          "id": 129049947152, "conclusion": "failure",
+          "steps": [{ "name": "Create kind cluster", "conclusion": "failure" }, { "name": "Prove the environment is gone", "conclusion": "failure" }, { "name": "Fail the build if any test failed", "conclusion": "failure" }],
+          "annotations": [
+            { "annotation_level": "failure", "message": "Process completed with exit code 1." },
+            { "annotation_level": "failure", "message": "The sharded test suite reported failures." },
+            { "annotation_level": "failure", "message": "the merged report was not collected from the environment" },
+            { "annotation_level": "warning", "message": "No files were found with the provided path: results/merged/summary.json" }
+          ],
+          "size": 49622,
+          "log": "2026-11-09T08:12:00.9057893Z sha256sum: WARNING: 1 computed checksum did NOT match\n2026-11-09T08:12:00.9060967Z kind-linux-amd64: FAILED\n2026-11-09T08:12:42.0076129Z ##[error]the merged report was not collected from the environment\n2026-11-09T08:12:42.0229512Z ##[error]The sharded test suite reported failures.\n"
+        },
+        {
+          "id": 129049947166, "conclusion": "failure",
+          "steps": [{ "name": "Create a cluster whose CNI enforces policy", "conclusion": "failure" }],
+          "annotations": [], "size": 20304,
+          "log": "2026-11-09T08:12:03.1870379Z sha256sum: WARNING: 1 computed checksum did NOT match\n2026-11-09T08:12:03.1870831Z kind-linux-amd64: FAILED\n"
+        },
+        {
+          "id": 129049947254, "conclusion": "failure",
+          "steps": [{ "name": "Create kind cluster", "conclusion": "failure" }],
+          "annotations": [], "size": 23436,
+          "log": "2026-11-09T08:12:24.6490934Z sha256sum: 'standard input': no properly formatted checksum lines found\n"
+        }
+      ]
+    },
+    "1001": {
+      "about": "two jobs failed at one step and one at another, which nothing explains",
+      "jobs": [
+        { "id": 1101, "conclusion": "failure", "steps": [{ "name": "Run tests", "conclusion": "failure" }], "annotations": [], "size": 1000,
+          "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" },
+        { "id": 1102, "conclusion": "failure", "steps": [{ "name": "Run tests", "conclusion": "failure" }], "annotations": [], "size": 1000,
+          "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" },
+        { "id": 1103, "conclusion": "failure", "steps": [{ "name": "Build", "conclusion": "failure" }], "annotations": [], "size": 1000,
+          "log": "BUILD FAILED in 12m 44s\n" }
+      ]
+    },
+    "1002": {
+      "about": "three emulators that never booted, and a refused token in the fourth failed job",
+      "jobs": [
+        { "id": 1201, "conclusion": "failure", "steps": [{ "name": "Run E2E", "conclusion": "failure" }], "annotations": [{ "annotation_level": "failure", "message": "Timeout waiting for emulator to boot." }], "size": 1000, "log": "BUILD FAILED\n" },
+        { "id": 1202, "conclusion": "failure", "steps": [{ "name": "Run E2E", "conclusion": "failure" }], "annotations": [{ "annotation_level": "failure", "message": "Timeout waiting for emulator to boot." }], "size": 1000, "log": "BUILD FAILED\n" },
+        { "id": 1203, "conclusion": "failure", "steps": [{ "name": "Run E2E", "conclusion": "failure" }], "annotations": [{ "annotation_level": "failure", "message": "Process completed with exit code 1." }], "size": 1000, "log": "BUILD FAILED\n" },
+        { "id": 1204, "conclusion": "failure", "steps": [{ "name": "Release", "conclusion": "failure" }], "annotations": [{ "annotation_level": "failure", "message": "Bad credentials - https://docs.github.com/rest" }], "size": 1000, "log": "BUILD FAILED\n" }
+      ]
+    },
+    "1003": {
+      "about": "one job its annotations explain, and one only its log does",
+      "jobs": [
+        { "id": 1301, "conclusion": "failure", "steps": [{ "name": "Run E2E", "conclusion": "failure" }], "annotations": [{ "annotation_level": "failure", "message": "Timeout waiting for emulator to boot." }], "size": 43000000, "log": "" },
+        { "id": 1302, "conclusion": "timed_out", "steps": [{ "name": "Install the SDK", "conclusion": "cancelled" }], "annotations": [{ "annotation_level": "failure", "message": "Process completed with exit code 1." }], "size": 5000,
+          "log": "Warning: An error occurred while preparing SDK package Google APIs Intel x86_64 Atom System Image: Error reading Zip content from a SeekableByteChannel.\n" }
+      ]
+    },
+    "1004": {
+      "about": "four logs of 1.9 MB, which the budget for a run cannot all hold",
+      "jobs": [
+        { "id": 1401, "conclusion": "failure", "steps": [{ "name": "Start MinIO", "conclusion": "failure" }], "annotations": [], "size": 1900000, "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" },
+        { "id": 1402, "conclusion": "failure", "steps": [{ "name": "Start MinIO", "conclusion": "failure" }], "annotations": [], "size": 1900000, "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" },
+        { "id": 1403, "conclusion": "failure", "steps": [{ "name": "Start MinIO", "conclusion": "failure" }], "annotations": [], "size": 1900000, "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" },
+        { "id": 1404, "conclusion": "failure", "steps": [{ "name": "Start MinIO", "conclusion": "failure" }], "annotations": [], "size": 1900000, "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" }
+      ]
+    },
+    "1005": {
+      "about": "a device-test log too big to read, ahead of one that would match",
+      "jobs": [
+        { "id": 1501, "conclusion": "failure", "steps": [{ "name": "Run tests", "conclusion": "failure" }], "annotations": [], "size": 43000000, "log": "" },
+        { "id": 1502, "conclusion": "failure", "steps": [{ "name": "Build", "conclusion": "failure" }], "annotations": [], "size": 1000, "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" }
+      ]
+    },
+    "1008": {
+      "about": "a log that has expired",
+      "jobs": [
+        { "id": 1801, "conclusion": "failure", "steps": [{ "name": "Run tests", "conclusion": "failure" }], "annotations": [], "expired": true }
+      ]
+    },
+    "1009": {
+      "about": "an annotation read that failed, next to a log that matches",
+      "jobs": [
+        { "id": 1901, "conclusion": "failure", "steps": [{ "name": "Run tests", "conclusion": "failure" }], "annotations": "unreadable", "size": 1000,
+          "log": "docker: Error response from daemon: unauthorized: access to the requested resource is not authorized\n" }
+      ]
+    },
+    "1010": {
+      "about": "no failed job",
+      "jobs": [
+        { "id": 2001, "conclusion": "cancelled", "steps": [{ "name": "Run tests", "conclusion": "cancelled" }], "annotations": [], "size": 1000, "log": "" }
+      ]
+    }
+  }
+}
