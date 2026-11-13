@@ -6,6 +6,7 @@
     "homepage": "https://github.com/AKogut/ai-agentic-workflow"
   },
   "policy": {
+    "read_as": "owner",
     "cooldown_days": 3,
     "cooldown_skip_severity": "high",
     "stale_pr_days": 7,

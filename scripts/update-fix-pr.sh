@@ -62,6 +62,7 @@ else
 fi
 
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 branch="kogut/$slug"
 limit="$(kogut_policy followup_limit)"
 pr="$(gh pr view "$number" -R "$full" --json state,author,headRefName,headRefOid,url,commits,body,files)"

@@ -71,10 +71,19 @@ kogut_require_not_held() {
 }
 
 # A scheduled run starts right after the Mac wakes, before the network is back.
+# It waits until GitHub answers whoever reads (policy.read_as): gh's login, or
+# the App's key.
 kogut_wait_online() {
-  local _
+  local _ as jwt=""
+  as="$(kogut_read_as)" || return 1
+  if [ "$as" = app ]; then jwt="$(kogut_app_jwt)" || return 1; fi
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    gh api rate_limit --silent 2>/dev/null && return 0
+    if [ "$as" = app ]; then
+      curl -fsS -o /dev/null -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
+        https://api.github.com/app 2>/dev/null && return 0
+    else
+      gh api rate_limit --silent 2>/dev/null && return 0
+    fi
     sleep 30
   done
   return 1
@@ -101,14 +110,14 @@ kogut_repo_path() {
 }
 
 # Default branch of a configured repository: the local clone's origin/HEAD, or
-# GitHub's answer when the clone does not record it.
+# GitHub's answer when the clone does not record it, read as policy.read_as says.
 kogut_default_branch() {
   local dir branch
   dir="$(kogut_repo_path "$1")"
   branch="$(git -C "$dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
   branch="${branch#origin/}"
   if [ -z "$branch" ]; then
-    branch="$(gh repo view "$(kogut_owner)/$1" --json defaultBranchRef --jq .defaultBranchRef.name)"
+    branch="$(kogut_read_env "$1" && gh repo view "$(kogut_owner)/$1" --json defaultBranchRef --jq .defaultBranchRef.name)"
   fi
   echo "$branch"
 }
@@ -358,4 +367,64 @@ kogut_app_missing() {
     "https://api.github.com/repos/$(kogut_owner)/$1/installation" 2>/dev/null)" || return 1
   [ "$code" = 404 ] || return 1
   echo "the kogut App is not installed on $1"
+}
+
+# Whom kogut reads GitHub as, from policy.read_as. "owner", the default, is gh's
+# login: it carries the admin bypass, and over SSH it cannot reach the keychain.
+# "app" is a read-only installation token of the App, whose key is a file. Writes
+# go as the App either way.
+kogut_read_as() {
+  local as
+  as="$(jq -r '.policy.read_as // "owner"' "$KOGUT_CONFIG")"
+  case "$as" in
+    owner | app) echo "$as" ;;
+    *) die "policy.read_as must be \"owner\" or \"app\", not \"$as\"" ;;
+  esac
+}
+
+# Every permission kogut's reads use, at read level: administration for classic
+# branch protection (rulesets need only metadata), secrets for the names and
+# dates of Actions secrets, vulnerability_alerts for Dependabot alerts. The
+# watched repositories are public, so their check runs and annotations read
+# without checks. ./scripts/app.sh check lists the ones the App was not granted.
+KOGUT_READ_PERMISSIONS='{"metadata":"read","contents":"read","pull_requests":"read","issues":"read","actions":"read","administration":"read","secrets":"read","vulnerability_alerts":"read"}'
+
+# Of those, the ones an installation was granted ($1, its permissions as GitHub
+# lists them), each at read level, never write. A read token asks for these: one
+# the installation lacks would make GitHub refuse the whole token, so it is left
+# out, and a read that needs it fails on its own and shows as unreadable.
+kogut_read_grants() {
+  jq -c --argjson want "$KOGUT_READ_PERMISSIONS" '. as $have | $want | with_entries(select($have[.key] != null))' <<<"$1"
+}
+
+# An installation token that can only read, for one or more watched
+# repositories, valid for an hour. Like kogut_app_token, assign it and check it.
+kogut_app_read_token() {
+  local jwt installation id permissions repos
+  [ $# -gt 0 ] || die "a read token needs a repository"
+  command -v curl >/dev/null || die "curl is not installed"
+  jwt="$(kogut_app_jwt)" || exit 1
+  installation="$(curl -fsS -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/$(kogut_owner)/$1/installation")" || die "the kogut App is not installed on $1"
+  id="$(jq -er '.id' <<<"$installation")" || die "the kogut App is not installed on $1"
+  permissions="$(kogut_read_grants "$(jq -c '.permissions // {}' <<<"$installation")")"
+  repos="$(printf '%s\n' "$@" | jq -Rsc 'split("\n") | map(select(. != ""))')"
+  curl -fsS -X POST -H "Authorization: Bearer $jwt" -H 'Accept: application/vnd.github+json' \
+    --data "$(jq -cn --argjson r "$repos" --argjson p "$permissions" '{repositories: $r, permissions: $p}')" \
+    "https://api.github.com/app/installations/$id/access_tokens" | jq -er '.token' ||
+    die "GitHub refused a read token for $*"
+}
+
+# Points gh's reads at the identity policy.read_as names, for repositories $@.
+# With "owner" it does nothing, and gh reads with the owner's login as it always
+# has. With "app" it exports a read token as GH_TOKEN for the rest of the shell,
+# and a write still passes its own token. When no read token can be had the
+# caller stops: it never falls back to the owner's login, as an empty GH_TOKEN would.
+kogut_read_env() {
+  local as token
+  as="$(kogut_read_as)" || exit 1
+  [ "$as" = app ] || return 0
+  token="$(kogut_app_read_token "$@")" || exit 1
+  [ -n "$token" ] || die "no read token from the kogut App for $*"
+  export GH_TOKEN="$token"
 }

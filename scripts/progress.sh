@@ -43,6 +43,9 @@ if [ "$named" -eq 0 ]; then
   while IFS= read -r r; do repos+=("$r"); done < <(kogut_repos)
 fi
 [ -n "$since" ] || since="$(jq -rn --argjson d "$days" '(now - $d * 86400) | strftime("%Y-%m-%d")')"
+# With policy.read_as "app" one read token covers the repositories reported, so
+# the searches below see only those, which is all progress.jq keeps anyway.
+kogut_read_env "${repos[@]}"
 
 owner="$(kogut_owner)"
 slug="$(kogut_app_slug)"

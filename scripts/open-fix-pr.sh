@@ -72,6 +72,7 @@ kogut_stage "$worktree" "$workflows" "$text"
 [ -z "$feature" ] || kogut_feature_size "$worktree"
 
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 base_branch="$(kogut_default_branch "$repo")"
 base="$(git -C "$worktree" rev-parse HEAD)"
 branch="kogut/$slug"

@@ -6,7 +6,8 @@
 #   ./scripts/app.sh convert <code>        # stores the App after GitHub redirects back
 #   ./scripts/app.sh import <id> [<pem>]   # stores an App registered by hand
 #   ./scripts/app.sh check                 # mints a token for every watched repository,
-#                                          # and names the ones it is not installed on yet
+#                                          # names the ones it is not installed on yet,
+#                                          # and says what reading as the App still lacks
 #
 # Registration uses GitHub's manifest flow. The form carries every setting, the
 # owner only confirms it, and GitHub redirects to the homepage with ?code=… in
@@ -138,10 +139,12 @@ EOF
     # shown with the way to install it and does not fail the check: the scripts
     # that run over every repository skip it. Any other refusal fails.
     failed=0 first="" missing_on=""
+    installed=()
     while IFS= read -r repo; do
       if token="$(kogut_app_token "$repo" 2>/dev/null)" && [ -n "$token" ]; then
         echo "ok    $repo"
         [ -n "$first" ] || first="$repo"
+        installed+=("$repo")
       elif kogut_app_missing "$repo" >/dev/null; then
         echo "none  $repo → $slug is not installed there yet"
         missing_on="$missing_on $repo"
@@ -164,6 +167,28 @@ EOF
       [ -z "$missing" ] || echo "not granted yet: $missing (the App's settings on GitHub, under Permissions, then accept on the installation)"
     else
       echo "granted: unknown"
+    fi
+
+    # Reading as the App (policy.read_as "app"): a token narrowed to the read side
+    # of what it was granted, for every repository the App is installed on at
+    # once. A read it may not make shows as unreadable, so the owner grants the
+    # rest first. A repository new to kogut is named above and has nothing to ask for.
+    read_as="$(kogut_read_as)"
+    echo "reads as: $read_as (policy.read_as)"
+    echo "reading as the App needs: $(jq -r 'keys_unsorted | map("\(.): read") | join(", ")' <<<"$KOGUT_READ_PERMISSIONS")"
+    if [ -n "${granted:-}" ]; then
+      echo "a read token carries: $(kogut_read_grants "$granted" | jq -r 'keys_unsorted | map("\(.): read") | join(", ")')"
+      missing="$(jq -r --argjson want "$KOGUT_READ_PERMISSIONS" '. as $have | $want | keys_unsorted
+        | map(select($have[.] == null) | "\(.): read") | join(", ")' <<<"$granted")"
+      [ -z "$missing" ] || echo "not granted for reading: $missing (with read_as app, what needs them reads as unreadable)"
+    fi
+    if [ "${#installed[@]}" -eq 0 ]; then
+      echo "none  no read token to ask for: $slug is installed on no watched repository"
+    elif token="$(kogut_app_read_token "${installed[@]}" 2>/dev/null)" && [ -n "$token" ]; then
+      echo "ok    a read token for every repository $slug is installed on"
+    else
+      echo "FAIL  no read token for the repositories $slug is installed on"
+      [ "$read_as" = owner ] || failed=1
     fi
     exit "$failed"
     ;;

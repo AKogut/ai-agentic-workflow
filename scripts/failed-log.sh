@@ -14,6 +14,7 @@ kogut_require_repo "$repo"
 [[ "$run" =~ ^[0-9]+$ ]] || die "run id must be numeric: $run"
 [[ "$context" =~ ^[0-9]+$ ]] || die "context-lines must be numeric: $context"
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 
 # Job logs download at a few hundred KB a second, and a device-test job can
 # log 40 MB. Past the limit the annotations and the failed steps have to do.

@@ -27,6 +27,7 @@ repo="$1" run="$2"
 kogut_require_repo "$repo"
 [[ "$run" =~ ^[0-9]+$ ]] || die "run id must be numeric: $run"
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 
 # Annotations for up to max_jobs failed jobs, and a run with more is unknown.
 # Logs up to max_total_bytes in all, which is three logs at max_log_bytes, the

@@ -3,9 +3,10 @@
 # then one summary of every repository to the summary channel, if .env names one.
 # It runs on a schedule (scripts/digest-schedule.sh), outside any Claude Code
 # session: collect.sh reads GitHub, digest.jq and summary.jq render, notify.sh
-# delivers. No model and no App token are involved, and nothing on GitHub changes.
-# It also says which repositories are on hold and what auto-merge.sh did today.
-# Acting on a digest is what /kogut is for.
+# delivers. No model is involved and nothing on GitHub changes; the App's token
+# is used only to read, and only when policy.read_as is "app". It also says
+# which repositories are on hold and what auto-merge.sh did today. Acting on a
+# digest is what /kogut is for.
 #
 #   ./scripts/digest.sh [--dry-run] [repo ...]
 #
@@ -23,7 +24,7 @@ if [ "${1:-}" = --dry-run ]; then
   shift
 fi
 
-kogut_wait_online || die "GitHub cannot be reached or gh is not logged in; no digest was posted"
+kogut_wait_online || die "GitHub cannot be reached, or it refused whom kogut reads as (policy.read_as); no digest was posted"
 
 # A snapshot of its own, so the run's .kogut/state.json stays as it was.
 state="$(mktemp)"

@@ -15,6 +15,7 @@ repo="$1" number="$2"
 kogut_require_repo "$repo"
 [[ "$number" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $number"
 full="$(kogut_owner)/$repo"
+kogut_read_env "$repo"
 owner="$(kogut_owner)"
 app="$(kogut_app_slug)"
 

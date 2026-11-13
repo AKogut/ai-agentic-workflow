@@ -859,7 +859,9 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
         hygiene_issues: [
           (if ($required | length) == 0 and (.required_checks_unread != true) then
             "no required status checks on \(.repo.default_branch): a PR without checks would look green" else empty end),
-          (if .repo.allow_auto_merge | not then "auto-merge is disabled" else empty end),
+          # GitHub leaves these two settings out for some readers, such as the App's
+          # read token with policy.read_as "app": null says nothing, so it is no gap.
+          (if .repo.allow_auto_merge == false then "auto-merge is disabled" else empty end),
           (if .dependabot_config == false then "no .github/dependabot.yml" else empty end),
           (if .alerts.status == "disabled" then "Dependabot alerts are disabled" else empty end),
           (if .alerts.status == "unavailable" then "Dependabot alerts could not be read" else empty end),
@@ -867,7 +869,7 @@ def ci_plan($w; $runs; $head_sha; $head_at; $app; $p):
             "no commits on \(.repo.default_branch) for \($idle) days: GitHub disables scheduled workflows after 60"
           else empty end),
           (if .local_clone.present | not then "no local clone at \(.local_clone.path)" else empty end),
-          (if .repo.delete_branch_on_merge | not then "merged branches are not deleted" else empty end)
+          (if .repo.delete_branch_on_merge == false then "merged branches are not deleted" else empty end)
         ]
       }
     | . + {findings: findings}

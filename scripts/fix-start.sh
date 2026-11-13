@@ -45,6 +45,7 @@ if [ "$2" = --pr ]; then
   [ $# -eq 3 ] || die "$usage"
   number="$3"
   [[ "$number" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $number"
+  kogut_read_env "$repo"
   pr="$(gh pr view "$number" -R "$(kogut_owner)/$repo" --json state,author,headRefName,headRefOid)"
   [ "$(jq -r '.state' <<<"$pr")" = OPEN ] || die "#$number is not open"
   [ "$(jq -r '.author.login' <<<"$pr")" = "app/$(kogut_app_slug)" ] || die "#$number is not kogut's PR"
