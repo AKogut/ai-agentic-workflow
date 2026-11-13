@@ -7,7 +7,8 @@
 # prints the signals digest computed from it by signals.jq: per repository, only
 # what needs attention. The digest is compact JSON, so it fits in one read; pipe
 # it to jq to browse.
-# Read-only — nothing on GitHub is changed.
+# Read-only — nothing on GitHub is changed. Besides GitHub it reads only the npm
+# registry, for the dates of the releases kogut's own PRs newly lock.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -51,6 +52,75 @@ run_cause() {
   printf '%s\n' "$out"
 }
 
+# What one of kogut's PRs newly locks, which the cooldown on kogut's PRs in
+# signals.jq reads: each lockfile the PR changes, read at its head and at the tip
+# of its base, and releases.sh's answer on the releases only the head locks. A
+# lockfile the base does not have locks nothing there. A lockfile kogut does not
+# read, or a read that fails, goes into unread, which holds the PR. npm's
+# answers are shared by the whole run. Prints {lockfiles, count, youngest,
+# recent, unread}.
+export KOGUT_NPM_CACHE="$tmp/npm"
+cooldown="$(kogut_policy cooldown_days)"
+pr_releases() {
+  local full="$1" n="$2" base="$3" head="$4" work="$5" files f name side ref i=0 published
+  mkdir -p "$work"
+  : >"$work/new"
+  : >"$work/unread"
+  : >"$work/lockfiles"
+  if ! [[ "$base" =~ ^[0-9a-f]{40}$ && "$head" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "the PR's base or head commit is unknown" >>"$work/unread"
+    files=""
+  elif ! files="$(gh api --paginate "repos/$full/pulls/$n/files?per_page=100" \
+    --jq '.[] | select(.status != "removed") | .filename' 2>/dev/null)"; then
+    echo "the files the PR changes could not be read" >>"$work/unread"
+    files=""
+  fi
+  while IFS= read -r f; do
+    name="${f##*/}"
+    case "$name" in
+      package-lock.json | npm-shrinkwrap.json | pnpm-lock.yaml) ;;
+      *.lock | *.lockb | *.lockfile | *-lock.json | *-lock.yaml | *.lock.json | go.sum)
+        echo "$f" >>"$work/lockfiles"
+        echo "$f is a lockfile kogut does not read" >>"$work/unread"
+        continue
+        ;;
+      *) continue ;;
+    esac
+    echo "$f" >>"$work/lockfiles"
+    if ! [[ "$f" =~ ^[A-Za-z0-9._/@-]+$ ]]; then
+      echo "$f is a path kogut does not request" >>"$work/unread"
+      continue
+    fi
+    i=$((i + 1))
+    for side in base head; do
+      ref="$base"
+      [ "$side" = base ] || ref="$head"
+      mkdir -p "$work/$i/$side"
+      if ! gh api -H 'Accept: application/vnd.github.raw+json' "repos/$full/contents/$f?ref=$ref" \
+        >"$work/$i/$side/$name" 2>"$work/err"; then
+        rm -f "$work/$i/$side/$name"
+        if [ "$side" = head ] || ! grep -q 'HTTP 404' "$work/err"; then
+          echo "$f could not be read at the $side" >>"$work/unread"
+          continue 2
+        fi
+      fi
+    done
+    if ! "$KOGUT_ROOT/scripts/releases.sh" new "$work/$i/base/$name" "$work/$i/head/$name" \
+      >>"$work/new" 2>"$work/err"; then
+      echo "$f: $(tail -n 1 "$work/err" | sed 's/^releases: //')" >>"$work/unread"
+    fi
+  done <<<"$files"
+  published='{"count": 0, "youngest": null, "recent": [], "unread": []}'
+  if [ -s "$work/new" ] &&
+    ! published="$("$KOGUT_ROOT/scripts/releases.sh" published "$cooldown" <"$work/new" 2>"$work/err")"; then
+    echo "the new releases could not be dated: $(tail -n 1 "$work/err" | sed 's/^releases: //')" >>"$work/unread"
+    published='{"count": 0, "youngest": null, "recent": [], "unread": []}'
+  fi
+  jq -n --argjson p "$published" --rawfile lockfiles "$work/lockfiles" --rawfile unread "$work/unread" \
+    '{lockfiles: ($lockfiles | split("\n") | map(select(. != ""))), count: $p.count, youngest: $p.youngest,
+      recent: $p.recent, unread: (($unread | split("\n") | map(select(. != ""))) + $p.unread)}'
+}
+
 # Prints a file from a repository's default branch. Returns 1 when the file does
 # not exist and 2 when it could not be read, so a failed request cannot pass for
 # a missing file.
@@ -87,7 +157,18 @@ collect_repo() {
   # Dependabot list stays light, and capped at 10: GitHub refuses a query whose
   # nested commits and authors could exceed 500,000 nodes, and 100 PRs would.
   gh pr list -R "$full" --state open --limit 10 --author "app/$(kogut_app_slug)" \
-    --json number,commits,reviews,comments >"$dir/kogut-prs.json"
+    --json number,commits,reviews,comments,baseRefOid,headRefOid >"$dir/kogut-prs.json"
+  # What each of them newly locks, as pr_releases above reads it.
+  mkdir -p "$dir/releases"
+  local pr_n pr_base pr_head
+  while read -r pr_n pr_base pr_head; do
+    pr_releases "$full" "$pr_n" "$pr_base" "$pr_head" "$dir/releases/$pr_n" </dev/null |
+      jq -c --arg n "$pr_n" '{($n): .}' >"$dir/releases/$pr_n.json" || rm -f "$dir/releases/$pr_n.json"
+  done < <(jq -r '.[] | "\(.number) \(.baseRefOid) \(.headRefOid)"' "$dir/kogut-prs.json")
+  find "$dir/releases" -maxdepth 1 -name '*.json' -exec cat {} + | jq -s 'add // {}' >"$dir/releases.json"
+  jq --slurpfile r "$dir/releases.json" 'map(. + {new_releases: $r[0][.number | tostring]})' \
+    "$dir/kogut-prs.json" >"$dir/kogut-prs.tmp" && mv "$dir/kogut-prs.tmp" "$dir/kogut-prs.json"
+
   # Dependabot's PRs carry the date of their head commit and their latest
   # comments, where Dependabot says why it cannot rebase and where kogut's own
   # commands show. Asking for the last few of each keeps the query small. The head
@@ -111,8 +192,14 @@ collect_repo() {
          head_authors: [.commits.nodes[0].commit.authors.nodes[]? | .user.login],
          comments: [.comments.nodes[] | {author: {login: .author.login}, createdAt, body: .body[0:500]}]}]' \
     >"$dir/dependabot-prs.json"
+  # A kogut PR with no answer on what it locks, after a failure or past the first
+  # 10, counts as unread, so it is held rather than passed.
   jq --slurpfile kogut "$dir/kogut-prs.json" --slurpfile dependabot "$dir/dependabot-prs.json" \
-    'map(. as $pr | . + ([$kogut[0][], $dependabot[0][] | select(.number == $pr.number)][0] // {}))' \
+    --arg app "app/$(kogut_app_slug)" \
+    'map(. as $pr | . + ([$kogut[0][], $dependabot[0][] | select(.number == $pr.number)][0] // {})
+      | if .author.login == $app and .new_releases == null then
+          .new_releases = {lockfiles: [], count: 0, youngest: null, recent: [], unread: ["what the PR locks could not be read"]}
+        else . end)' \
     "$dir/prs.json" >"$dir/prs-merged.json" && mv "$dir/prs-merged.json" "$dir/prs.json"
 
   gh api "repos/$full/actions/workflows?per_page=100" \

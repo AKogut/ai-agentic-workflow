@@ -220,6 +220,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **One review across repositories:** an update that arrives in several repositories at once is judged once and reported together, and I still approve each repository's merge
 - [x] **Daily summary:** one message across every repository in a channel of its own: what waits for me, what is red, what the cooldown holds and until when, what merged on its own, and what is on hold
 - [x] **Its own repository:** kogut watches `ai-agentic-workflow` too, a repository new to kogut is skipped with the reason until it has the App and a channel, and no kogut PR may change what an agent is allowed to run
+- [x] **Cooldown for kogut's PRs:** a kogut PR whose lockfile takes in a release npm published less than three days ago waits, like a Dependabot PR, and says until when; whatever cannot be dated holds it
 
 ## License
 

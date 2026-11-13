@@ -1,0 +1,16 @@
+lockfileVersion: '6.0'
+
+devDependencies:
+  vite:
+    specifier: ^5.0.0
+    version: 5.0.0(@types/node@20.0.0)
+
+packages:
+
+  /@scope/x@1.0.0:
+    resolution: {integrity: sha512-HHHH}
+    dev: true
+
+  /vite@5.0.0(@types/node@20.0.0):
+    resolution: {integrity: sha512-IIII}
+    dev: true

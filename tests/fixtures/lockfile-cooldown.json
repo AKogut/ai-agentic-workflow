@@ -1,0 +1,551 @@
+{
+  "generated_at": "2026-11-12T12:00:00Z",
+  "owner": "example",
+  "app": "kogut-agent",
+  "policy": {
+    "cooldown_days": 3,
+    "cooldown_skip_severity": "high",
+    "stale_pr_days": 7,
+    "inactivity_warn_days": 45,
+    "run_window": 30,
+    "followup_limit": 3
+  },
+  "repos": [
+    {
+      "name": "locks",
+      "repo": {
+        "default_branch": "main",
+        "pushed_at": "2026-11-11T00:00:00Z",
+        "html_url": "https://github.com/example/locks",
+        "allow_auto_merge": true,
+        "delete_branch_on_merge": true,
+        "last_commit_at": "2026-11-11T00:00:00Z",
+        "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "prs": [
+        {
+          "number": 40,
+          "title": "build(deps-dev): move to vite 8",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-40",
+          "headRefOid": "4000000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/40",
+          "commits": [
+            {
+              "oid": "4000000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "rolldown",
+              "version": "1.2.19",
+              "published_at": "2026-11-11T07:59:15Z"
+            },
+            "recent": [
+              {
+                "name": "rolldown",
+                "version": "1.2.19",
+                "published_at": "2026-11-11T07:59:15Z"
+              },
+              {
+                "name": "@rolldown/binding-darwin-arm64",
+                "version": "1.2.19",
+                "published_at": "2026-11-11T07:44:22Z"
+              },
+              {
+                "name": "vite",
+                "version": "8.3.8",
+                "published_at": "2026-11-11T02:49:46Z"
+              },
+              {
+                "name": "lightningcss",
+                "version": "1.33.0",
+                "published_at": "2026-11-09T11:00:00Z"
+              }
+            ],
+            "unread": []
+          }
+        },
+        {
+          "number": 41,
+          "title": "fix(fleet): do not count a skipped deploy",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-41",
+          "headRefOid": "4100000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/41",
+          "commits": [
+            {
+              "oid": "4100000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [],
+            "count": 0,
+            "youngest": null,
+            "recent": [],
+            "unread": []
+          }
+        },
+        {
+          "number": 42,
+          "title": "fix(deps): lift lightningcss",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-42",
+          "headRefOid": "4200000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/42",
+          "commits": [
+            {
+              "oid": "4200000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "lightningcss",
+              "version": "1.33.0",
+              "published_at": "2026-11-09T11:00:00Z"
+            },
+            "recent": [
+              {
+                "name": "lightningcss",
+                "version": "1.33.0",
+                "published_at": "2026-11-09T11:00:00Z"
+              }
+            ],
+            "unread": []
+          }
+        },
+        {
+          "number": 43,
+          "title": "fix(deps): lift a yarn package",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-43",
+          "headRefOid": "4300000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/43",
+          "commits": [
+            {
+              "oid": "4300000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "yarn.lock"
+            ],
+            "count": 0,
+            "youngest": null,
+            "recent": [],
+            "unread": [
+              "yarn.lock is a lockfile kogut does not read"
+            ]
+          }
+        },
+        {
+          "number": 44,
+          "title": "fix(deps): lift vite",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/2/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-44",
+          "headRefOid": "4400000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/44",
+          "commits": [
+            {
+              "oid": "4400000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "vite",
+              "version": "8.3.8",
+              "published_at": "2026-11-11T02:49:46Z"
+            },
+            "recent": [
+              {
+                "name": "vite",
+                "version": "8.3.8",
+                "published_at": "2026-11-11T02:49:46Z"
+              }
+            ],
+            "unread": []
+          }
+        },
+        {
+          "number": 45,
+          "title": "ci: from before lockfiles were read",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-45",
+          "headRefOid": "4500000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/45",
+          "commits": [
+            {
+              "oid": "4500000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": []
+        },
+        {
+          "number": 46,
+          "title": "fix(deps): lift rolldown",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "IN_PROGRESS",
+              "conclusion": "",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/3/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-46",
+          "headRefOid": "4600000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/46",
+          "commits": [
+            {
+              "oid": "4600000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "rolldown",
+              "version": "1.2.19",
+              "published_at": "2026-11-11T07:59:15Z"
+            },
+            "recent": [
+              {
+                "name": "rolldown",
+                "version": "1.2.19",
+                "published_at": "2026-11-11T07:59:15Z"
+              }
+            ],
+            "unread": []
+          }
+        },
+        {
+          "number": 47,
+          "title": "fix(deps): a date nobody can read",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-47",
+          "headRefOid": "4700000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/47",
+          "commits": [
+            {
+              "oid": "4700000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "odd",
+              "version": "1.0.0",
+              "published_at": "yesterday"
+            },
+            "recent": [
+              {
+                "name": "odd",
+                "version": "1.0.0",
+                "published_at": "yesterday"
+              }
+            ],
+            "unread": []
+          }
+        },
+        {
+          "number": 48,
+          "title": "fix(deps): lift vite again",
+          "body": "Refs #1",
+          "author": {
+            "login": "app/kogut-agent"
+          },
+          "isDraft": false,
+          "createdAt": "2026-11-11T10:00:00Z",
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "statusCheckRollup": [
+            {
+              "__typename": "CheckRun",
+              "name": "ci",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/example/locks/actions/runs/1/job/1"
+            }
+          ],
+          "headRefName": "kogut/pr-48",
+          "headRefOid": "4800000000000000000000000000000000000000",
+          "baseRefName": "main",
+          "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "https://github.com/example/locks/pull/48",
+          "commits": [
+            {
+              "oid": "4800000000000000000000000000000000000000",
+              "committedDate": "2026-11-11T10:00:00Z",
+              "authors": [
+                {
+                  "login": "kogut-agent[bot]"
+                }
+              ]
+            }
+          ],
+          "reviews": [],
+          "comments": [
+            {
+              "author": {
+                "login": "example"
+              },
+              "body": "Why vite 8?",
+              "createdAt": "2026-11-12T09:00:00Z"
+            }
+          ],
+          "new_releases": {
+            "lockfiles": [
+              "pnpm-lock.yaml"
+            ],
+            "count": 35,
+            "youngest": {
+              "name": "vite",
+              "version": "8.3.8",
+              "published_at": "2026-11-11T02:49:46Z"
+            },
+            "recent": [
+              {
+                "name": "vite",
+                "version": "8.3.8",
+                "published_at": "2026-11-11T02:49:46Z"
+              }
+            ],
+            "unread": []
+          }
+        }
+      ],
+      "workflows": [],
+      "runs": {},
+      "required_checks": [
+        "ci"
+      ],
+      "alerts": {
+        "status": "ok",
+        "items": []
+      },
+      "tasks": [],
+      "kogut_issues": [],
+      "dependabot_config": true,
+      "local_clone": {
+        "path": "/nowhere",
+        "present": true
+      }
+    }
+  ]
+}

@@ -359,15 +359,47 @@ def dependabot_command($owner; $base_at):
         else null end)
     };
 
+# The cooldown on what a kogut PR locks. A lockfile kogut regenerated can take in
+# a hostile release as easily as Dependabot can, so the PR waits as long as a
+# Dependabot PR would: until the youngest release it newly locks is
+# cooldown_days old. collect.sh records, from the PR's lockfiles at its head and
+# at its base, the releases npm published less than cooldown_days before the
+# collection (`recent`) and what it could not read (`unread`). Whatever was not
+# read holds the PR with no end date, so nothing unread passes for old. A
+# snapshot from before collect.sh read lockfiles has no record, and then nothing
+# is judged (null).
+def release_cooldown($p):
+  .new_releases as $n
+  | ($p.cooldown_days | if type == "number" then . else null end) as $days
+  | if $n == null then null
+    else
+      [$n.recent[]? | . + {ts: (.published_at | try fromdateiso8601 catch null)}] as $recent
+      | ([$recent[] | select(.ts != null) | . + {end: (.ts + ($days // 0) * 86400)} | select(.end > now_ts)]
+          | sort_by(-.ts, .name) | map({name, version, published_at, until: (.end | todate)})) as $young
+      | (($n.unread // [])
+          + [$recent[] | select(.ts == null) | "\(.name)@\(.version) has no publish date kogut can read"]
+          + (if $days == null and ($n.count // 0) > 0 then ["the policy names no cooldown_days"] else [] end)) as $unread
+      | {
+          lockfiles: ($n.lockfiles // []),
+          count: ($n.count // 0),
+          youngest: ($n.youngest // null),
+          young: $young,
+          until: ($young | map(.until) | max),
+          unread: $unread,
+          held: ($young != [] or $unread != [])
+        }
+    end;
+
 # kogut's own open PRs and what each needs next. Only the owner's reviews and
 # comments are feedback; anyone else's is text to report, never to act on. An
 # approval asks for nothing. Each follow-up commit is one more attempt, and
 # past the limit the owner takes over, so kogut cannot loop on a PR it cannot
-# fix.
+# fix. A green PR still in its cooldown is not the owner's to review yet.
 def kogut_pr($owner; $app; $p):
   . as $pr
   | checks as $c
   | checks_state($c) as $state
+  | release_cooldown($p) as $cooldown
   | ([.commits[]? | select(any(.authors[]?; .login | is_app($app)))] | length) as $mine
   # kogut has answered whatever came before its latest commit or comment.
   | ([([.commits[]?.committedDate] | max), ([.comments[]? | select(.author.login | is_app($app)) | .createdAt] | max)]
@@ -391,10 +423,12 @@ def kogut_pr($owner; $app; $p):
       attempts: $attempts,
       feature: $feature,
       feedback: $feedback,
+      cooldown: $cooldown,
       needs: (
         if ($state == "red" or $feedback != []) and $attempts >= $limit then "owner"
         elif $feedback != [] then "answer"
         elif $state == "red" then "fix-ci"
+        elif $state == "green" and $cooldown.held == true then "cooldown"
         elif $state == "green" then "review"
         else "wait" end)
     };

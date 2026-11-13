@@ -1577,5 +1577,104 @@ check "issues.sh still stops on a token refused for another reason" \
 rm -rf "$self_dir"
 
 echo
+echo "the cooldown on what kogut's PRs lock"
+lc_fixture=tests/fixtures/lockfile-cooldown.json
+lc="$(KOGUT_NOW=2026-11-12T12:00:00Z jq -f scripts/signals.jq "$lc_fixture")"
+lc_helpers='def k($n): .repos[] | select(.name == "locks") | .kogut_prs[] | select(.number == $n);'
+lc_check() { check "$1" "$lc_helpers $2" "${3:-$lc}"; }
+lc_check "a green PR that locks a release younger than the cooldown is not the owner's to review yet" \
+  'k(40) | .needs == "cooldown" and .cooldown.held and .cooldown.until == "2026-11-14T07:59:15Z"'
+lc_check "it names each young release, youngest first, with the day it clears" \
+  'k(40).cooldown.young | map("\(.name)@\(.version) \(.until)")
+     == ["rolldown@1.2.19 2026-11-14T07:59:15Z", "@rolldown/binding-darwin-arm64@1.2.19 2026-11-14T07:44:22Z",
+         "vite@8.3.8 2026-11-14T02:49:46Z"]'
+lc_check "a release that came of age after the collection holds nothing" \
+  'k(42) | .needs == "review" and (.cooldown | .held == false and .young == [] and .youngest.name == "lightningcss")'
+lc_check "a PR that changes no lockfile is unaffected" \
+  'k(41) | .needs == "review" and .cooldown == {lockfiles: [], count: 0, youngest: null, young: [], until: null, unread: [], held: false}'
+lc_check "a lockfile kogut does not read holds the PR, with no end date" \
+  'k(43) | .needs == "cooldown" and .cooldown.until == null and .cooldown.unread == ["yarn.lock is a lockfile kogut does not read"]'
+lc_check "so does a date that cannot be read" \
+  'k(47) | .needs == "cooldown" and .cooldown.unread == ["odd@1.0.0 has no publish date kogut can read"]'
+lc_check "red checks and the owner's feedback still come first, and a pending PR waits" \
+  '[k(44, 48, 46) | .needs] == ["fix-ci", "answer", "wait"] and all(k(44, 48, 46); .cooldown.held)'
+lc_check "a snapshot from before lockfiles were read judges nothing" 'k(45) | .cooldown == null and .needs == "review"'
+lc_check "on the clock past the youngest release, the PR is the owner's again" \
+  'k(40) | .needs == "review" and .cooldown.young == [] and .cooldown.until == null' \
+  "$(KOGUT_NOW=2026-11-14T08:00:00Z jq -f scripts/signals.jq "$lc_fixture")"
+lc_check "without cooldown_days a PR that locks new releases is held, and one that locks none is not" \
+  '(k(42) | .needs == "cooldown" and .cooldown.unread == ["the policy names no cooldown_days"]) and (k(41).needs == "review")' \
+  "$(jq '.policy |= del(.cooldown_days)' "$lc_fixture" | KOGUT_NOW=2026-11-12T12:00:00Z jq -f scripts/signals.jq)"
+lc_check "the digest says until when, apart from what waits for the owner" \
+  '.[0].text | contains("**kogut PRs in cooldown:** [#40](https://github.com/example/locks/pull/40) until 2026-11-14,")
+     and contains("[#43](https://github.com/example/locks/pull/43) (not every release it locks could be dated)")
+     and (capture("waiting for you:\\*\\* (?<l>[^\n]*)").l | contains("#41") and contains("#42") and (contains("#40") | not))' \
+  "$(jq -c -f scripts/digest.jq <<<"$lc")"
+lc_check "the summary lists them with what the cooldown holds, not with what waits for the owner" \
+  '.text | (split("**In cooldown**\n")[1] | split("\n**")[0] | split("\n")
+       | index("- locks [#40](https://github.com/example/locks/pull/40): kogut'"'"'s PR, free from 2026-11-14 07:59 UTC") != null
+         and index("- locks [#43](https://github.com/example/locks/pull/43): kogut'"'"'s PR, held until every release it locks can be dated") != null)
+     and (split("**Waits for you**\n")[1] | split("\n**")[0] | contains("#41") and (contains("#40") or contains("#43") | not))' \
+  "$(summary_of "$lc")"
+check "a kogut PR in its cooldown leaves the digest green" \
+  '.[0] | .status == "green" and (.text | contains("**kogut PRs in cooldown:** [#9](https://example/r/pull/9) until 2026-11-14") and contains("Nothing needs you."))' \
+  "$(digest_full '{repos: [quiet + {kogut_prs: [{number: 9, url: "https://example/r/pull/9", needs: "cooldown", cooldown: {until: "2026-11-14T07:59:15Z", unread: []}}]}]}')"
+
+locks=tests/fixtures/lockfiles
+lines() { jq -R -s -c 'split("\n") | map(select(. != ""))'; }
+check "a pnpm lockfile yields the releases only the new one locks, and not its local packages" \
+  '. == ["@rolldown/binding-darwin-arm64@1.2.19", "from-git@https://codeload.github.com/example/from-git/tar.gz/abc123",
+         "rolldown@1.2.19", "vite@8.3.8"]' \
+  "$(./scripts/releases.sh new "$locks/before/pnpm-lock.yaml" "$locks/after/pnpm-lock.yaml" | lines)"
+check "an npm lockfile goes by the real name of an alias, and skips links, workspaces and file: packages" \
+  '. == ["@scope/pkg@2.0.0", "gitdep@git+ssh://git@github.com/example/gitdep.git#abc123", "qs@6.14.0", "string-width@4.2.3"]' \
+  "$(./scripts/releases.sh new "$locks/before/package-lock.json" "$locks/after/package-lock.json" | lines)"
+check "a lockfile the base does not have makes everything new, and version 6 keys lose their peers" \
+  '. == ["@scope/x@1.0.0", "vite@5.0.0"]' \
+  "$(./scripts/releases.sh new "$locks/nowhere/pnpm-lock.yaml" "$locks/v6/pnpm-lock.yaml" | lines)"
+lock_dir="$(mktemp -d)"
+mkdir "$lock_dir/v5" "$lock_dir/v1"
+printf 'lockfileVersion: 5.4\n\npackages:\n\n  /vite/2.0.0:\n    dev: true\n' >"$lock_dir/v5/pnpm-lock.yaml"
+printf '{"lockfileVersion": 1, "dependencies": {"qs": {"version": "6.14.0"}}}\n' >"$lock_dir/v1/package-lock.json"
+printf 'qs@6.14.0:\n  version "6.14.0"\n' >"$lock_dir/yarn.lock"
+for f in v5/pnpm-lock.yaml v1/package-lock.json yarn.lock; do
+  check "a format kogut does not read fails: $f" '.status != 0 and .out != ""' \
+    "$(status=0; out="$(./scripts/releases.sh new "$lock_dir/none" "$lock_dir/$f" 2>&1)" || status=$?
+      jq -cn --argjson status "$status" --arg out "$out" '{$status, $out}')"
+done
+rm -rf "$lock_dir"
+
+# npm's answers come from the fixture, so nothing here reaches the registry.
+npm_cache="$(mktemp -d)"
+jq -r 'keys[]' "$locks/npm.json" | while IFS= read -r name; do
+  jq -c --arg n "$name" '.[$n]' "$locks/npm.json" >"$npm_cache/${name/\//%2F}.json"
+done
+dated() { KOGUT_NOW=2026-11-12T12:00:00Z KOGUT_NPM_CACHE="$npm_cache" ./scripts/releases.sh published "$@"; }
+check "npm dates each release, and those inside the cooldown are listed youngest first" \
+  '.count == 4 and .youngest == {name: "rolldown", version: "1.2.19", published_at: "2026-11-11T07:59:15Z"}
+     and (.recent | map(.name)) == ["rolldown", "@rolldown/binding-darwin-arm64", "vite"]
+     and .unread == ["from-git@https://codeload.github.com/example/from-git/tar.gz/abc123 is not a release on the npm registry"]' \
+  "$(./scripts/releases.sh new "$locks/before/pnpm-lock.yaml" "$locks/after/pnpm-lock.yaml" | dated 3)"
+check "an old release is not recent, and a package npm does not have is unread" \
+  '.youngest.name == "qs" and .recent == []
+     and .unread == ["@scope/pkg is not on the npm registry", "gitdep@git+ssh://git@github.com/example/gitdep.git#abc123 is not a release on the npm registry"]' \
+  "$(./scripts/releases.sh new "$locks/before/package-lock.json" "$locks/after/package-lock.json" | dated 3)"
+check "a release npm took down, an error, a missing version or date and a name kogut does not ask for are unread" \
+  '.youngest == null and .recent == [] and .unread == [
+     "Bad Name@1.0.0 is not a release on the npm registry",
+     "the npm registry did not answer for flaky (HTTP 503)",
+     "pulled@1.0.1 was taken down from the npm registry",
+     "the npm registry gives no publish time for undated@1.0.0",
+     "the npm registry has no vite@9.9.9"]' \
+  "$(printf 'pulled@1.0.1\nflaky@2.0.0\nvite@9.9.9\nundated@1.0.0\nBad Name@1.0.0\n' | dated 3)"
+check "more packages than kogut looks up leaves them all unread" \
+  '.youngest == null and .recent == [] and .unread == ["2 new releases from 2 packages, and kogut looks up at most 1"]' \
+  "$(printf 'vite@8.3.8\nrolldown@1.2.19\n' | KOGUT_RELEASE_LOOKUPS=1 dated 3)"
+check "nothing new is nothing to wait for" '. == {count: 0, youngest: null, recent: [], unread: []}' "$(dated 3 </dev/null)"
+check "a cooldown that is not a number of days fails" '.status != 0' \
+  "$(status=0; dated three </dev/null >/dev/null 2>&1 || status=$?; jq -cn --argjson status "$status" '{$status}')"
+rm -rf "$npm_cache"
+
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
