@@ -92,10 +92,14 @@ if [ "$2" = --pr ]; then
   fi
 
   # The merge stops before a commit, and none of the repository's hooks run.
-  git -C "$worktree" -c core.hooksPath=/dev/null merge --no-commit --no-ff --quiet "$base" >/dev/null 2>&1 || true
+  # git asks who the committer is before it merges anything, and on a machine
+  # with no identity set it stops there, so it is given a name here. Nothing is
+  # committed, so that name is written nowhere.
+  merged="$(git -C "$worktree" -c core.hooksPath=/dev/null -c user.name=kogut -c user.email=kogut@localhost \
+    merge --no-commit --no-ff --quiet "$base" 2>&1)" || true
   if [ "$(git -C "$worktree" rev-parse -q --verify MERGE_HEAD || true)" != "$base" ]; then
     git -C "$dir" worktree remove --force "$worktree"
-    die "$base_branch at ${base:0:7} could not be merged into #$number; nothing was started"
+    die "$base_branch at ${base:0:7} could not be merged into #$number, so nothing was started: $(tail -n 1 <<<"$merged")"
   fi
   lockfiles='[]' conflicts='[]'
   unmerged="$(git -C "$worktree" diff --name-only --diff-filter=U)"
