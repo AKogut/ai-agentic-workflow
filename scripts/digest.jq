@@ -31,7 +31,7 @@ def report($root):
     | [.dependabot_prs[] | select(cooldown_only)] as $waiting
     | [.dependabot_prs[] | select((.ready_to_merge | not) and (cooldown_only | not))] as $stuck
     | [.kogut_prs[] | select(.needs | IN("review", "owner"))] as $for_owner
-    | [.kogut_prs[] | select(.needs | IN("fix-ci", "answer"))] as $for_kogut
+    | [.kogut_prs[] | select(.needs | IN("fix-ci", "answer", "refresh"))] as $for_kogut
     | [.kogut_prs[] | select(.needs == "cooldown")] as $kogut_waiting
     # kogut's own issues show as their alerts and majors; these are the owner's.
     | [.tasks[] | select((.auto | not) and .needs == "start")] as $tasks

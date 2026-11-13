@@ -161,11 +161,14 @@ kogut_fix_title() {
 # should see that flag in the prompt. It never touches a .claude/settings.json:
 # that file says what an agent may run without asking, kogut's own included, so
 # only the owner changes it, by hand. Then the changed lines and the text ($3)
-# are scanned with gitleaks.
+# are scanned with gitleaks. The change is measured from the worktree's HEAD, or
+# from $4 when a refresh merged the PR's base into the worktree: then it is what
+# the PR holds against that base, because the base's own changes are not the
+# fix's to answer for.
 kogut_stage() {
-  local worktree="$1" workflows="$2" text="$3" changed settings
+  local worktree="$1" workflows="$2" text="$3" from="${4:-HEAD}" changed settings
   git -C "$worktree" add -A
-  changed="$(git -C "$worktree" diff --cached --name-only --no-renames HEAD)"
+  changed="$(git -C "$worktree" diff --cached --name-only --no-renames "$from")"
   [ -n "$changed" ] || die "the fix changes nothing"
   settings="$(grep -E '(^|/)\.claude/settings(\.local)?\.json$' <<<"$changed" | head -n 1)" || true
   [ -z "$settings" ] || die "the fix changes $settings: what an agent may run is the owner's to set, by hand"
@@ -174,24 +177,29 @@ kogut_stage() {
   else
     [ "$workflows" = false ] || die "the fix changes no workflow: drop --workflows"
   fi
-  { git -C "$worktree" diff --cached --unified=0 HEAD; cat "$text"; } | kogut_scan ||
+  { git -C "$worktree" diff --cached --unified=0 "$from"; cat "$text"; } | kogut_scan ||
     die "gitleaks flagged the fix; nothing was sent"
 }
 
-# The staged change, for the owner to read before approving.
+# The staged change, for the owner to read before approving: against the
+# worktree's HEAD, or against $2, the base a refresh merged in.
 kogut_show_diff() {
-  git -C "$1" diff --cached --stat HEAD
+  local from="${2:-HEAD}"
+  git -C "$1" diff --cached --stat "$from"
   echo "--- diff"
-  git -C "$1" diff --cached HEAD | awk 'NR <= 400 { print } END { if (NR > 400) print "... " NR - 400 " more lines" }'
+  git -C "$1" diff --cached "$from" | awk 'NR <= 400 { print } END { if (NR > 400) print "... " NR - 400 " more lines" }'
 }
 
 # Builds a worktree's staged change as a commit on GitHub, on top of the
 # worktree's HEAD, and prints the commit's id. The blobs and modes are the
 # ones git staged, and GitHub's tree must hash to the staged tree, so the
 # commit holds exactly the diff that was shown. Needs GH_TOKEN exported with
-# the App's token; no git credentials are involved.
+# the App's token; no git credentials are involved. With $4, a commit of the
+# PR's base branch that was merged into the worktree, the commit is that merge:
+# the base is its second parent, so the branch still only moves forward and
+# GitHub measures the PR from that commit.
 kogut_api_commit() {
-  local full="$1" worktree="$2" message="$3" entries status path mode sha blob tree staged
+  local full="$1" worktree="$2" message="$3" also="${4:-}" entries status path mode sha blob tree staged
   entries="$(mktemp)"
   while IFS= read -r -d '' status && IFS= read -r -d '' path; do
     case "$path" in -* | *$'\n'* | *$'\t'*) die "refusing an unusual path: $path" ;; esac
@@ -201,10 +209,15 @@ kogut_api_commit() {
     else
       read -r mode sha _ <<<"$(git -C "$worktree" ls-files -s -- "$path")"
       [ "$mode" != 160000 ] || die "refusing a submodule change: $path"
-      blob="$(git -C "$worktree" cat-file blob "$sha" | base64 | tr -d '\n' |
-        jq -Rs '{content: ., encoding: "base64"}' |
-        gh api -X POST "repos/$full/git/blobs" --input - --jq .sha)"
-      [ "$blob" = "$sha" ] || die "GitHub stored $path as $blob, not $sha"
+      if [ -n "$also" ] && [ "$(git -C "$worktree" rev-parse -q --verify "$also:$path" 2>/dev/null || true)" = "$sha" ]; then
+        # A file as the merged-in base has it is on GitHub already, and is not sent again.
+        blob="$sha"
+      else
+        blob="$(git -C "$worktree" cat-file blob "$sha" | base64 | tr -d '\n' |
+          jq -Rs '{content: ., encoding: "base64"}' |
+          gh api -X POST "repos/$full/git/blobs" --input - --jq .sha)"
+        [ "$blob" = "$sha" ] || die "GitHub stored $path as $blob, not $sha"
+      fi
       jq -cn --arg p "$path" --arg m "$mode" --arg s "$blob" '{path: $p, mode: $m, type: "blob", sha: $s}'
     fi
   done < <(git -C "$worktree" diff --cached --name-status -z --no-renames HEAD) >"$entries"
@@ -213,8 +226,8 @@ kogut_api_commit() {
   rm -f "$entries"
   staged="$(git -C "$worktree" write-tree)"
   [ "$tree" = "$staged" ] || die "GitHub built tree $tree, but the staged tree is $staged; nothing was sent"
-  jq -n --arg m "$message" --arg t "$tree" --arg p "$(git -C "$worktree" rev-parse HEAD)" \
-    '{message: $m, tree: $t, parents: [$p]}' |
+  jq -n --arg m "$message" --arg t "$tree" --arg p "$(git -C "$worktree" rev-parse HEAD)" --arg also "$also" \
+    '{message: $m, tree: $t, parents: ([$p, $also] | map(select(. != "")))}' |
     gh api -X POST "repos/$full/git/commits" --input - --jq .sha
 }
 
@@ -274,10 +287,12 @@ kogut_feature_state() {
 # A feature stays small enough to review. Counts the staged change in worktree $1,
 # plus for a follow-up what PR $2 (gh's JSON with files) already holds, leaving
 # out lockfiles, which nobody reads. Dies past policy.feature.max_files or max_lines.
+# A refresh passes no PR and the base it merged in as $3: the staged change
+# against that base is then all the PR holds.
 kogut_feature_size() {
-  local worktree="$1" pr="${2:-}" stat lines files max_lines max_files
+  local worktree="$1" pr="${2:-}" from="${3:-HEAD}" stat lines files max_lines max_files
   [ -n "$pr" ] || pr='{}'
-  stat="$(git -C "$worktree" diff --cached --numstat --no-renames HEAD)"
+  stat="$(git -C "$worktree" diff --cached --numstat --no-renames "$from")"
   # shellcheck disable=SC2016 # these are jq's variables
   read -r lines files <<<"$(jq -Rrs --argjson pr "$pr" '
     def locked: test("(^|/)(package-lock\\.json|pnpm-lock\\.yaml|yarn\\.lock)$");

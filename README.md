@@ -104,6 +104,7 @@ Each repository gets a report on every run, even when nothing needs doing. A qui
 | A daily digest without the model | kogut only works when it is started, so a draft whose hold date had passed sat unnoticed for six days. A launchd job posts each repository's state every morning with `jq`, spending no tokens and changing nothing on GitHub, and an optional channel gets one summary of all of them: what waits for me, what is red, what the cooldown holds and until when. Everything that acts stays in `/kogut`. |
 | Bash, `gh` and `jq`, no runtime dependencies | The work is API calls and JSON. The scripts stay compatible with the bash 3.2 that ships with macOS. |
 | One sweep instead of webhooks | Six repositories don't justify a workflow in each. One pass reads them all. |
+| A conflict is settled by a merge, not a second PR | kogut only adds commits on top of its branches, and a commit on top cannot settle a conflict with the base: after two Dependabot merges its vite PR in flakemetry had to be opened again. Now it merges the base into the branch as one commit the branch can fast-forward to, regenerates the lockfile, and I approve what the PR holds against the base. |
 | kogut watches itself, but never its permissions | Its own repository gets the same Dependabot, CI and hygiene watch as the others, and a fix PR there can change kogut's scripts, which I review like any fix. No kogut PR may change a `.claude/settings.json`, here or anywhere: what an agent may run without asking is mine to set, by hand, not something to approve inside a diff. |
 | Code is read from `origin`, never the working copy | A working copy may be on any branch with any local edits. |
 | Approvals are permission prompts | A sentence in a prompt can be argued with. An `ask` rule in the harness cannot. |
@@ -161,7 +162,7 @@ scripts/issues.sh               one issue per finding: opened, updated, closed b
 scripts/issues.jq               the issue policy: when to open, update, keep, skip or close
 scripts/fix-start.sh            a worktree at origin's default branch for one fix
 scripts/open-fix-pr.sh          the only way kogut opens a PR: gitleaks, then the App's commit
-scripts/update-fix-pr.sh        a follow-up commit or an answer on kogut's own PR, within a limit
+scripts/update-fix-pr.sh        a follow-up commit, a merge of the base into a PR in conflict, or an answer, within a limit
 scripts/fix-lockfile.sh         lockfile-only npm or pnpm in a fix's worktree, with a version summary
 scripts/pr-feedback.sh          the owner's reviews on a kogut PR; nobody else's words
 scripts/task-reply.sh           kogut's answer on a task it cannot start yet, or its plan for a feature
@@ -223,6 +224,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
 - [x] **Its own repository:** kogut watches `ai-agentic-workflow` too, a repository new to kogut is skipped with the reason until it has the App and a channel, and no kogut PR may change what an agent is allowed to run
 - [x] **Cooldown for kogut's PRs:** a kogut PR whose lockfile takes in a release npm published less than three days ago waits, like a Dependabot PR, and says until when; whatever cannot be dated holds it
 - [x] **Reading as the App:** an opt-in that takes my login, and its admin bypass, out of every read
+- [x] **Refreshing its own PRs:** a kogut PR that conflicts with its base gets the base merged in, by a commit the branch fast-forwards to, instead of a second PR
 
 ## License
 

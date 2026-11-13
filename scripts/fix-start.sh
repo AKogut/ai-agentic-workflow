@@ -5,6 +5,7 @@
 #
 #   ./scripts/fix-start.sh <repo> <slug>             # a new fix, at the default branch
 #   ./scripts/fix-start.sh <repo> --pr <number>      # a follow-up to one of kogut's PRs
+#   ./scripts/fix-start.sh <repo> --pr <number> --refresh   # the same, for a PR in conflict
 #   ./scripts/fix-start.sh <repo> <slug> --discard   # removes the fix again
 #
 # A new fix starts from the default branch as it is on GitHub. A follow-up
@@ -15,6 +16,15 @@
 # comment for the PR). The checkout is detached and nothing is committed
 # locally: the commit is made on GitHub, as the kogut App.
 #
+# --refresh is for a PR that conflicts with its base. A commit on top of its
+# head cannot settle that, because GitHub measures the conflict from the commit
+# where the branch left the base. So the tip of the base is merged into the
+# worktree, uncommitted and with no hook run, and update-fix-pr.sh pushes the
+# result as a merge commit whose second parent is that tip: the branch still
+# only moves forward. A lockfile in conflict is never merged by hand: the base's
+# is taken, and fix-lockfile.sh writes the fix's part of it again. Whatever else
+# is in conflict is listed for the model to resolve in the worktree.
+#
 # One fix at a time per repository, so agents running in parallel cannot write to
 # the same one: while a worktree exists, a new start in that repository is
 # refused. The check and the creation hold a lock, so two starts cannot both pass.
@@ -22,8 +32,8 @@ set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-usage="usage: fix-start.sh <repo> <slug> [--discard] | fix-start.sh <repo> --pr <number>"
-[ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"
+usage="usage: fix-start.sh <repo> <slug> [--discard] | fix-start.sh <repo> --pr <number> [--refresh]"
+[ $# -ge 2 ] && [ $# -le 4 ] || die "$usage"
 repo="$1"
 kogut_require_repo "$repo"
 dir="$(kogut_repo_path "$repo")"
@@ -42,11 +52,16 @@ claim_repo() {
 }
 
 if [ "$2" = --pr ]; then
-  [ $# -eq 3 ] || die "$usage"
+  [ $# -ge 3 ] || die "$usage"
+  refresh=false
+  if [ $# -eq 4 ]; then
+    [ "$4" = --refresh ] || die "$usage"
+    refresh=true
+  fi
   number="$3"
   [[ "$number" =~ ^[0-9]+$ ]] || die "PR number must be numeric: $number"
   kogut_read_env "$repo"
-  pr="$(gh pr view "$number" -R "$(kogut_owner)/$repo" --json state,author,headRefName,headRefOid)"
+  pr="$(gh pr view "$number" -R "$(kogut_owner)/$repo" --json state,author,headRefName,headRefOid,baseRefName)"
   [ "$(jq -r '.state' <<<"$pr")" = OPEN ] || die "#$number is not open"
   [ "$(jq -r '.author.login' <<<"$pr")" = "app/$(kogut_app_slug)" ] || die "#$number is not kogut's PR"
   branch="$(jq -r '.headRefName' <<<"$pr")"
@@ -59,11 +74,56 @@ if [ "$2" = --pr ]; then
   git -C "$dir" fetch --quiet origin "refs/pull/$number/head"
   [ "$(git -C "$dir" rev-parse FETCH_HEAD)" = "$head" ] || die "#$number moved while it was fetched; start again"
   mkdir -p "$(dirname "$worktree")"
+  if [ "$refresh" = true ]; then
+    base_branch="$(jq -r '.baseRefName' <<<"$pr")"
+    git -C "$dir" fetch --quiet origin "$base_branch"
+    base="$(git -C "$dir" rev-parse FETCH_HEAD)"
+    ! git -C "$dir" merge-base --is-ancestor "$base" "$head" ||
+      die "#$number already holds $base_branch at ${base:0:7}: there is nothing to refresh"
+  fi
   git -C "$dir" worktree add --quiet --detach "$worktree" "$head"
-  # update-fix-pr.sh reads this to push on top of exactly this head.
-  jq -n --argjson n "$number" --arg h "$head" '{number: $n, head: $h}' >"$worktree.pr"
+  if [ "$refresh" = false ]; then
+    # update-fix-pr.sh reads this to push on top of exactly this head.
+    jq -n --argjson n "$number" --arg h "$head" '{number: $n, head: $h}' >"$worktree.pr"
+    echo "worktree: $worktree"
+    echo "follows up: #$number at ${head:0:7}, branch $branch"
+    echo "text: $worktree.md (the commit message, a blank line, then the comment for the PR)"
+    exit 0
+  fi
+
+  # The merge stops before a commit, and none of the repository's hooks run.
+  git -C "$worktree" -c core.hooksPath=/dev/null merge --no-commit --no-ff --quiet "$base" >/dev/null 2>&1 || true
+  if [ "$(git -C "$worktree" rev-parse -q --verify MERGE_HEAD || true)" != "$base" ]; then
+    git -C "$dir" worktree remove --force "$worktree"
+    die "$base_branch at ${base:0:7} could not be merged into #$number; nothing was started"
+  fi
+  lockfiles='[]' conflicts='[]'
+  unmerged="$(git -C "$worktree" diff --name-only --diff-filter=U)"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "${path##*/}" in
+      package-lock.json | pnpm-lock.yaml)
+        if git -C "$worktree" cat-file -e "$base:$path" 2>/dev/null; then
+          git -C "$worktree" checkout --quiet "$base" -- "$path"
+          lockfiles="$(jq -c --arg p "$path" '. + [$p]' <<<"$lockfiles")"
+          continue
+        fi
+        ;;
+    esac
+    conflicts="$(jq -c --arg p "$path" '. + [$p]' <<<"$conflicts")"
+  done <<<"$unmerged"
+  # update-fix-pr.sh reads this to push on top of exactly this head, as a merge
+  # of exactly this commit of the base.
+  jq -n --argjson n "$number" --arg h "$head" --arg b "$base" --arg bb "$base_branch" \
+    --argjson conflicts "$conflicts" --argjson lockfiles "$lockfiles" \
+    '{number: $n, head: $h, base: $b, base_branch: $bb, conflicts: $conflicts, lockfiles: $lockfiles}' >"$worktree.pr"
   echo "worktree: $worktree"
   echo "follows up: #$number at ${head:0:7}, branch $branch"
+  echo "merged in: $base_branch at ${base:0:7}, not committed"
+  jq -r --arg repo "$repo" --arg slug "$slug" --arg b "$base_branch" '.[] |
+    "lockfile: \(.) is now as on \($b); add what the fix needs with ./scripts/fix-lockfile.sh \($repo) \($slug)\(if contains("/") then " " + sub("/[^/]*$"; "") else "" end)"' <<<"$lockfiles"
+  jq -r '.[] | "in conflict: \(.) (resolve it in the worktree)"' <<<"$conflicts"
+  [ "$lockfiles$conflicts" != '[][]' ] || echo "no conflict was left to resolve"
   echo "text: $worktree.md (the commit message, a blank line, then the comment for the PR)"
   exit 0
 fi

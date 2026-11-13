@@ -1804,5 +1804,280 @@ check "and closes once they read clean" \
 rm -rf "$ra_dir"
 
 echo
+echo "a kogut PR in conflict with its base"
+# The fixture of the lockfile cooldown, with some of its PRs in conflict.
+rf_signals() { jq "$1" "$lc_fixture" | KOGUT_NOW=2026-11-12T12:00:00Z jq -f scripts/signals.jq; }
+rf_set='def mergeable($ns; $m): (.repos[] | select(.name == "locks") | .prs[] | select(.number | IN($ns[])) | .mergeable) = $m;'
+rf="$(rf_signals "$rf_set mergeable([40, 41, 44, 46, 48]; \"CONFLICTING\")")"
+lc_check "a PR in conflict needs a refresh, whatever its checks last said" \
+  '[k(41, 40, 44, 46) | .needs] == ["refresh", "refresh", "refresh", "refresh"] and all(k(41, 40, 44, 46); .mergeable == "CONFLICTING")' "$rf"
+lc_check "the owner's words still come first" 'k(48).needs == "answer"' "$rf"
+lc_check "a PR that merges cleanly is judged as before" '[k(42, 43) | .needs] == ["review", "cooldown"]' "$rf"
+lc_check "an answer GitHub has not worked out yet is not a conflict" 'k(41).needs == "review"' \
+  "$(rf_signals "$rf_set mergeable([41]; \"UNKNOWN\")")"
+lc_check "past the follow-up limit a conflict is the owner's, and without one the limit changes nothing" \
+  '.[0] | k(41).needs == "owner" and k(42).needs == "review"' \
+  "$(rf_signals "$rf_set mergeable([41]; \"CONFLICTING\") | .policy.followup_limit = 0" | jq -c '[.]')"
+lc_check "the digest lists it as work for kogut, not as waiting for the owner" \
+  '.[0].text | (capture("with work for kogut:\\*\\* (?<l>[^\n]*)").l | contains("#40") and contains("#41") and contains("#44"))
+     and (capture("waiting for you:\\*\\* (?<l>[^\n]*)").l | contains("#42") and (contains("#41") or contains("#40") | not))
+     and (contains("kogut PRs in cooldown:** [#40]") | not)' \
+  "$(jq -c -f scripts/digest.jq <<<"$rf")"
+lc_check "and the summary does not hand it to the owner" \
+  '.text | split("**Waits for you**\n")[1] | split("\n**")[0] | contains("#42") and (contains("#41") or contains("#40") | not)' \
+  "$(summary_of "$rf")"
+
+# fix-start.sh --refresh and update-fix-pr.sh, against a repository of the test's
+# own and a gh that keeps GitHub's side of it: PR #7 from kogut/vite into main,
+# and the Git database API, which builds real objects in the test's origin.
+rf_dir="$(mktemp -d)"
+rf_git() { git -c user.name=test -c user.email=test@example.invalid -c init.defaultBranch=main -c commit.gpgsign=false "$@"; }
+rf_o() { git --git-dir="$rf_dir/origin.git" "$@"; }
+rf_git init -q --bare "$rf_dir/origin.git"
+rf_git init -q "$rf_dir/clone"
+(
+  cd "$rf_dir/clone"
+  rf_git remote add origin "$rf_dir/origin.git"
+  rf_git symbolic-ref HEAD refs/heads/main
+  printf 'one\ntwo\nthree\n' >app.txt
+  printf 'lock: 1\n' >pnpm-lock.yaml
+  printf 'notes\n' >notes.md
+  rf_git add -A
+  rf_git commit -qm "the base"
+  rf_git push -q origin HEAD:refs/heads/main
+  # The PR changes a line and the lockfile.
+  rf_git checkout -q -b kogut/vite
+  printf 'one\nTWO\nthree\n' >app.txt
+  printf 'lock: 1\nvite: 8\n' >pnpm-lock.yaml
+  rf_git commit -qam "build: move to vite 8"
+  rf_git push -q origin HEAD:refs/heads/kogut/vite HEAD:refs/pull/7/head
+  # main moves on: the same line, the lockfile, a file the PR leaves alone, and a workflow.
+  rf_git checkout -q main
+  mkdir -p .github/workflows
+  printf 'one\n2\nthree\n' >app.txt
+  printf 'lock: 2\n' >pnpm-lock.yaml
+  printf 'notes, edited on main\n' >notes.md
+  printf 'on: push\n' >.github/workflows/ci.yml
+  rf_git add -A
+  rf_git commit -qm "main moves on"
+  rf_git push -q origin HEAD:refs/heads/main
+) >/dev/null 2>&1
+rf_pr="$(rf_o rev-parse refs/heads/kogut/vite)"
+rf_base="$(rf_o rev-parse refs/heads/main)"
+mkdir -p "$rf_dir/kogut/bin"
+cp -R scripts "$rf_dir/kogut/"
+jq --arg p "$rf_dir/clone" '(.repos[] | select(.name == "flakemetry") | .path) = $p' kogut.config.json >"$rf_dir/kogut/kogut.config.json"
+cat >>"$rf_dir/kogut/scripts/lib.sh" <<'EOF'
+kogut_app_token() { echo test-token; }
+kogut_scan() { cat >/dev/null; }
+EOF
+cat >"$rf_dir/kogut/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+g() { git --git-dir="$RF_ORIGIN" -c user.name=github -c user.email=github@example.invalid "$@"; }
+echo "${GH_TOKEN:-no-token} $(tr '\n' ' ' <<<"$*")" >>"$RF_LOG"
+filter="" method=GET path="" sha="" input=false prev=""
+for arg in "$@"; do
+  case "$prev" in
+    --jq) filter="$arg" ;;
+    -X) method="$arg" ;;
+    -f) case "$arg" in sha=*) sha="${arg#sha=}" ;; esac ;;
+  esac
+  case "$arg" in repos/*) path="$arg" ;; --input) input=true ;; esac
+  prev="$arg"
+done
+out() { if [ -n "$filter" ]; then jq -r "$filter" <<<"$1"; else printf '%s\n' "$1"; fi; }
+if [ "$1" = pr ]; then
+  head="$(g rev-parse refs/heads/kogut/vite)"
+  # The PR's commits are the ones on its branch that main does not have.
+  out "$(jq -n --arg h "$head" --argjson n "$(g rev-list --count --first-parent "refs/heads/main..$head")" \
+    '{state: "OPEN", author: {login: "app/kogut-agent"}, headRefName: "kogut/vite", headRefOid: $h, baseRefName: "main",
+      url: "https://github.test/flakemetry/pull/7", body: "", files: [],
+      commits: [range($n) | {authors: [{login: "kogut-agent[bot]"}]}]}')"
+  exit 0
+fi
+body=""
+[ "$input" = false ] || body="$(cat)"
+case "$method $path" in
+  "GET repos/"*"/compare/"*)
+    spec="${path##*/compare/}"
+    base="${spec%%...*}" branch="${spec##*...}"
+    if [ "$(g rev-parse "refs/heads/$branch")" = "$base" ]; then out '{"status": "identical"}'
+    elif g merge-base --is-ancestor "$base" "refs/heads/$branch" 2>/dev/null; then out '{"status": "ahead"}'
+    else out '{"status": "diverged"}'; fi ;;
+  "POST repos/"*"/git/blobs")
+    out "$(jq -n --arg s "$(jq -j '.content | @base64d' <<<"$body" | g hash-object -w --stdin)" '{sha: $s}')" ;;
+  "POST repos/"*"/git/trees")
+    index="$(mktemp -u)"
+    GIT_INDEX_FILE="$index" g read-tree "$(jq -r '.base_tree' <<<"$body")"
+    while IFS=$'\t' read -r mode blob file; do
+      if [ "$blob" = null ]; then
+        GIT_INDEX_FILE="$index" g update-index --force-remove "$file"
+      else
+        GIT_INDEX_FILE="$index" g update-index --add --cacheinfo "$mode,$blob,$file"
+      fi
+    done < <(jq -r '.tree[] | [.mode, (.sha // "null"), .path] | @tsv' <<<"$body")
+    tree="$(GIT_INDEX_FILE="$index" g write-tree)"
+    rm -f "$index"
+    out "$(jq -n --arg s "$tree" '{sha: $s}')" ;;
+  "POST repos/"*"/git/commits")
+    parents=()
+    while IFS= read -r p; do parents+=(-p "$p"); done < <(jq -r '.parents[]' <<<"$body")
+    out "$(jq -n --arg s "$(g commit-tree "$(jq -r '.tree' <<<"$body")" "${parents[@]}" -m "$(jq -r '.message' <<<"$body")")" '{sha: $s}')" ;;
+  "PATCH repos/"*"/git/refs/heads/kogut/vite")
+    # force=false: the branch moves only as a fast forward.
+    g merge-base --is-ancestor refs/heads/kogut/vite "$sha" || { echo "gh: Update is not a fast forward (HTTP 422)" >&2; exit 1; }
+    g update-ref refs/heads/kogut/vite "$sha"
+    g update-ref refs/pull/7/head "$sha" ;;
+  "POST repos/"*"/issues/7/comments") jq -r '.body' <<<"$body" >"$RF_COMMENT" ;;
+  *) echo "gh: unexpected $method $path" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$rf_dir/kogut/bin/gh"
+rf_run() { # the status and output of one call in the copy, as JSON
+  local status=0 out
+  out="$(env -u GH_TOKEN RF_ORIGIN="$rf_dir/origin.git" RF_LOG="$rf_dir/gh.log" RF_COMMENT="$rf_dir/comment" \
+    KOGUT_HOLD_FILE=/nonexistent PATH="$rf_dir/kogut/bin:$PATH" "$rf_dir/kogut/scripts/$1" "${@:2}" 2>&1)" || status=$?
+  jq -cn --argjson status "$status" --arg out "$out" '{$status, $out}'
+}
+rf_wt="$rf_dir/kogut/.kogut/fixes/flakemetry/vite"
+check "a refresh merges the base into the worktree, takes its lockfile and names what is left" \
+  '.status == 0 and (.out | contains("follows up: #7 at '"${rf_pr:0:7}"', branch kogut/vite")
+     and contains("merged in: main at '"${rf_base:0:7}"', not committed")
+     and contains("lockfile: pnpm-lock.yaml is now as on main; add what the fix needs with ./scripts/fix-lockfile.sh flakemetry vite\n")
+     and contains("in conflict: app.txt (resolve it in the worktree)"))' \
+  "$(rf_run fix-start.sh flakemetry --pr 7 --refresh)"
+check "nothing is committed, and the marker pins the head and the commit of the base" \
+  '.head == "'"$rf_pr"'" and .lock == "lock: 2" and .notes == "notes, edited on main"
+     and .marker == {number: 7, head: "'"$rf_pr"'", base: "'"$rf_base"'", base_branch: "main", conflicts: ["app.txt"], lockfiles: ["pnpm-lock.yaml"]}' \
+  "$(jq -n --arg head "$(git -C "$rf_wt" rev-parse HEAD)" --arg lock "$(cat "$rf_wt/pnpm-lock.yaml")" \
+    --arg notes "$(cat "$rf_wt/notes.md")" --slurpfile marker "$rf_wt.pr" '{$head, $lock, $notes, marker: $marker[0]}')"
+printf 'build: merge main and write the lockfile again\n\nmain moved on, so this takes it in.\n' >"$rf_wt.md"
+check "a conflict left as git wrote it is not pushed" \
+  '.status != 0 and (.out | contains("app.txt still has conflict markers: resolve it first"))' \
+  "$(rf_run update-fix-pr.sh flakemetry vite --dry-run)"
+# Resolved: the PR's line stays, and the lockfile gets the fix's part again.
+printf 'one\nTWO\nthree\n' >"$rf_wt/app.txt"
+printf 'lock: 2\nvite: 8\n' >"$rf_wt/pnpm-lock.yaml"
+check "a refresh is a commit, never only a comment" \
+  '.status != 0 and (.out | contains("a refresh pushes a commit"))' "$(rf_run update-fix-pr.sh flakemetry vite --comment-only)"
+# A commit with the base's files that is on another branch, not on main.
+rf_other="$(rf_o -c user.name=test -c user.email=test@example.invalid commit-tree "$rf_base^{tree}" -p "$rf_base" -m "elsewhere")"
+rf_o update-ref refs/heads/elsewhere "$rf_other"
+git -C "$rf_dir/clone" fetch -q origin elsewhere
+cp "$rf_wt.pr" "$rf_dir/marker"
+jq --arg b "$rf_other" '.base = $b' "$rf_dir/marker" >"$rf_wt.pr"
+rf_refused="$(rf_run update-fix-pr.sh flakemetry vite)"
+check "a second parent that is not on the base branch is refused, and the branch stays" \
+  '.status != 0 and (.out | contains("'"${rf_other:0:7}"' is not on main; start again")) and .branch == "'"$rf_pr"'"' \
+  "$(jq -c --arg b "$(rf_o rev-parse refs/heads/kogut/vite)" '. + {branch: $b}' <<<"$rf_refused")"
+cp "$rf_dir/marker" "$rf_wt.pr"
+check "the owner is shown what the PR holds against the base, not what the base brought in" \
+  '.status == 0 and (.out | contains("follow-up 1 of 3 on https://github.test/flakemetry/pull/7")
+     and contains("refresh: a merge of main at '"${rf_base:0:7}"'; the files below are all the PR holds against it")
+     and contains(" app.txt ") and contains(" pnpm-lock.yaml ") and contains("2 files changed")
+     and (contains("notes.md") or contains("ci.yml") | not) and contains("not pushed: --dry-run"))' \
+  "$(rf_run update-fix-pr.sh flakemetry vite --dry-run)"
+check "a workflow the base brought in is not the fix's, so --workflows is refused" \
+  '.status != 0 and (.out | contains("the fix changes no workflow: drop --workflows"))' \
+  "$(rf_run update-fix-pr.sh flakemetry vite --workflows --dry-run)"
+: >"$rf_dir/gh.log"
+rf_pushed="$(rf_run update-fix-pr.sh flakemetry vite)"
+rf_new="$(rf_o rev-parse refs/heads/kogut/vite)"
+check "the push is a merge of the PR's head and the base, holding only the fix against it" \
+  '.status == 0 and (.out | contains("follow-up 1 of 3, as kogut-agent[bot], merging main at '"${rf_base:0:7}"')"))
+     and .parents == "'"$rf_new $rf_pr $rf_base"'" and .changed == "app.txt,pnpm-lock.yaml"
+     and .app == "one\nTWO\nthree" and .lock == "lock: 2\nvite: 8" and .message == "build: merge main and write the lockfile again"' \
+  "$(jq -c --arg parents "$(rf_o rev-list --parents -n 1 "$rf_new")" --arg changed "$(rf_o diff --name-only "$rf_base" "$rf_new" | paste -sd, -)" \
+    --arg app "$(rf_o show "$rf_new:app.txt")" --arg lock "$(rf_o show "$rf_new:pnpm-lock.yaml")" \
+    --arg message "$(rf_o log -1 --format=%s "$rf_new")" '. + {$parents, $changed, $app, $lock, $message}' <<<"$rf_pushed")"
+check "every write went out as the App, the PR has the comment, and the worktree is gone" \
+  '(.log | split("\n") | map(select(test(" -X (POST|PATCH) "))) | length >= 5 and all(startswith("test-token ")))
+     and ([.log | split("\n")[] | select(contains("/git/blobs"))] | length) == 1
+     and (.comment | contains("main moved on, so this takes it in.") and contains("follow-up 1 of 3), a merge of main at '"${rf_base:0:7}"'."))
+     and .worktree == "gone"' \
+  "$(jq -n --rawfile log "$rf_dir/gh.log" --rawfile comment "$rf_dir/comment" \
+    --arg worktree "$([ -e "$rf_wt" ] && echo there || echo gone)" '{$log, $comment, $worktree}')"
+rf_again="$(rf_run fix-start.sh flakemetry --pr 7 --refresh)"
+check "a PR that holds the base already has nothing to refresh, and no worktree is left" \
+  '.status != 0 and (.out | contains("#7 already holds main at '"${rf_base:0:7}"': there is nothing to refresh")) and .worktree == "gone"' \
+  "$(jq -c --arg w "$([ -e "$rf_wt" ] && echo there || echo gone)" '. + {worktree: $w}' <<<"$rf_again")"
+# A plain follow-up is still one commit on top of the head.
+rf_run fix-start.sh flakemetry --pr 7 >/dev/null
+printf 'one\nTWO\nthree\nfour\n' >"$rf_wt/app.txt"
+printf 'fix: add the fourth line\n\nThe fourth line was missing.\n' >"$rf_wt.md"
+rf_plain="$(rf_run update-fix-pr.sh flakemetry vite)"
+check "a follow-up without a refresh is one commit on top of the head, measured from it" \
+  '.status == 0 and (.out | contains("follow-up 2 of 3, as kogut-agent[bot])")) and .parents == .head + " '"$rf_new"'"
+     and .changed == "app.txt"' \
+  "$(jq -c --arg head "$(rf_o rev-parse refs/heads/kogut/vite)" --arg parents "$(rf_o rev-list --parents -n 1 refs/heads/kogut/vite)" \
+    --arg changed "$(rf_o diff --name-only "$rf_new" refs/heads/kogut/vite | paste -sd, -)" '. + {$head, $parents, $changed}' <<<"$rf_plain")"
+# main takes in all the PR holds, so a refresh would leave it empty.
+rf_o update-ref refs/heads/main "$(rf_o -c user.name=test -c user.email=test@example.invalid \
+  commit-tree "refs/heads/kogut/vite^{tree}" -p refs/heads/main -m "main takes the change")"
+rf_run fix-start.sh flakemetry --pr 7 --refresh >/dev/null
+printf 'chore: merge main\n\nmain moved on.\n' >"$rf_wt.md"
+rf_empty="$(rf_run update-fix-pr.sh flakemetry vite)"
+check "a refresh that would leave the PR empty is not pushed" \
+  '.status != 0 and (.out | contains("nothing of #7 is left once main is merged in")) and .branch == .before' \
+  "$(jq -c --arg branch "$(rf_o rev-parse refs/heads/kogut/vite)" --arg before "$(jq -r .head "$rf_wt.pr")" '. + {$branch, $before}' <<<"$rf_empty")"
+rm -rf "$rf_dir"
+
+echo
+echo "progress, reading as the App"
+# progress.sh in a copy: the App is installed everywhere but on kogut's own
+# repository, and gh answers nothing, which counts as nothing to report.
+pg_dir="$(mktemp -d)"
+mkdir "$pg_dir/bin"
+cp -R scripts "$pg_dir/"
+cat >>"$pg_dir/scripts/lib.sh" <<'EOF'
+kogut_app_jwt() { echo test-jwt; }
+kogut_app_missing() {
+  [ -n "${PG_NOWHERE:-}" ] || [ "$1" = ai-agentic-workflow ] || return 1
+  echo "the kogut App is not installed on $1"
+}
+kogut_app_read_token() {
+  local r
+  for r in "$@"; do [ "$r" != ai-agentic-workflow ] || die "the kogut App is not installed on $r"; done
+  echo read-token
+}
+EOF
+# shellcheck disable=SC2016 # the script expands these when it runs
+printf '#!/usr/bin/env bash\necho "${GH_TOKEN:-no-token} $(tr "\\n" " " <<<"$*")" >>"$PG_LOG"\n' >"$pg_dir/bin/gh"
+chmod +x "$pg_dir/bin/gh"
+pg_run() { # pg_run <read_as> [argument ...]: {status, out, err, log}
+  local as="$1" status=0
+  shift
+  jq --arg as "$as" '.policy.read_as = $as' kogut.config.json >"$pg_dir/kogut.config.json"
+  : >"$pg_dir/gh.log"
+  env -u GH_TOKEN PG_NOWHERE="${PG_NOWHERE:-}" PG_LOG="$pg_dir/gh.log" PATH="$pg_dir/bin:$PATH" \
+    "$pg_dir/scripts/progress.sh" "$@" >"$pg_dir/out" 2>"$pg_dir/err" || status=$?
+  jq -n --argjson status "$status" --rawfile out "$pg_dir/out" --rawfile err "$pg_dir/err" --rawfile log "$pg_dir/gh.log" \
+    '{$status, $out, $err, log: ($log | split("\n") | map(select(. != "")))}'
+}
+pg_others="$(jq '.repos | length - 1' kogut.config.json)"
+pg_app="$(pg_run app)"
+check "a run over every repository leaves out the one without the App, and the report says so" \
+  '.status == 0 and (.err | contains("ai-agentic-workflow: left out, the kogut App is not installed on ai-agentic-workflow"))
+     and (.out | contains("Not counted: ai-agentic-workflow (the kogut App is not installed on ai-agentic-workflow). The figures above cover the other repositories only.")
+       and (contains("| ai-agentic-workflow |") | not))
+     and ([.out | scan("(?m)^\\| [a-z0-9-]+ \\|")] | length) == '"$pg_others" "$pg_app"
+check "every read carries the App's token, and none asks about that repository" \
+  '.log | length > 0 and all(startswith("read-token ")) and all(contains("/ai-agentic-workflow/") | not)' "$pg_app"
+check "the figures name what was left out" \
+  '.status == 0 and (.out | fromjson | .left_out == [{name: "ai-agentic-workflow", why: "the kogut App is not installed on ai-agentic-workflow"}]
+     and (.repos | length) == '"$pg_others"' and all(.repos[]; .name != "ai-agentic-workflow"))' "$(pg_run app --json)"
+check "a repository the owner names still stops the run, before anything is read" \
+  '.status != 0 and (.err | contains("the kogut App is not installed on ai-agentic-workflow")) and .log == [] and .out == ""' \
+  "$(pg_run app ai-agentic-workflow)"
+check "with the App installed nowhere there is nothing to read" \
+  '.status != 0 and (.err | contains("the kogut App is installed on no watched repository")) and .log == []' \
+  "$(PG_NOWHERE=1 pg_run app)"
+check "reading as the owner counts every repository, as before" \
+  '.status == 0 and .err == "" and (.out | contains("| ai-agentic-workflow |") and (contains("Not counted") | not))
+     and (.log | length > 0 and all(startswith("no-token ")))
+     and ([.out | scan("(?m)^\\| [a-z0-9-]+ \\|")] | length) == '"$pg_others"' + 1' "$(pg_run owner)"
+rm -rf "$pg_dir"
+echo
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
