@@ -27,12 +27,12 @@
     }
   },
   "repos": [
-    { "name": "ai-agentic-workflow", "path": "~/GitHubPersonal/ai-agentic-workflow" },
-    { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },
-    { "name": "ephemeral-k8s-test-envs", "path": "~/GitHubPersonal/ephemeral-k8s-test-envs" },
-    { "name": "flakemetry", "path": "~/GitHubPersonal/flakemetry" },
-    { "name": "mobile-task-manager-automation", "path": "~/GitHubPersonal/mobile-task-manager-automation" },
-    { "name": "playwright-ecommerce-framework", "path": "~/GitHubPersonal/playwright-ecommerce-framework" },
-    { "name": "restful-booker-api-testing", "path": "~/GitHubPersonal/restful-booker-api-testing" }
+    { "name": "ai-agentic-workflow", "path": "~/GitHub/ai-agentic-workflow" },
+    { "name": "ai-flaky-test-triage", "path": "~/GitHub/ai-flaky-test-triage" },
+    { "name": "ephemeral-k8s-test-envs", "path": "~/GitHub/ephemeral-k8s-test-envs" },
+    { "name": "flakemetry", "path": "~/GitHub/flakemetry" },
+    { "name": "mobile-task-manager-automation", "path": "~/GitHub/mobile-task-manager-automation" },
+    { "name": "playwright-ecommerce-framework", "path": "~/GitHub/playwright-ecommerce-framework" },
+    { "name": "restful-booker-api-testing", "path": "~/GitHub/restful-booker-api-testing" }
   ]
 }

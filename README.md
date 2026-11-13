@@ -137,7 +137,7 @@ Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an
 To run it from any directory:
 
 ```sh
-kogut() { (cd ~/GitHubPersonal/ai-agentic-workflow && claude "/kogut $*"); }
+kogut() { (cd ~/GitHub/ai-agentic-workflow && claude "/kogut $*"); }
 ```
 
 ## Repository layout
