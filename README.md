@@ -123,7 +123,7 @@ cp .env.example .env              # one Discord webhook per repository, and one 
 claude                            # then run /kogut analyze
 ```
 
-Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq`, `curl`, `openssl` and [`gitleaks`](https://github.com/gitleaks/gitleaks), plus `npm` and the `pnpm` version a repository's `packageManager` names, for lockfile fixes. The watched repositories and the paths of their local clones are listed in [`kogut.config.json`](kogut.config.json), along with the App's id. An App registered by hand is stored with `./scripts/app.sh import <id>`.
+Requires [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), an authenticated [`gh`](https://cli.github.com/), `jq`, `curl`, `openssl` and [`gitleaks`](https://github.com/gitleaks/gitleaks), plus `npm` and the `pnpm` version a repository's `packageManager` names, for lockfile fixes. The watched repositories are listed in [`kogut.config.json`](kogut.config.json), along with the App's id and the paths of their local clones, relative to this clone, so one config fits every machine that keeps the repositories side by side. An App registered by hand is stored with `./scripts/app.sh import <id>`.
 
 | Command | What it does |
 |---|---|

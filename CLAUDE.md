@@ -10,7 +10,7 @@ kogut runs on the owner's Claude subscription, through whatever account Claude C
 
 - `.claude/skills/kogut/SKILL.md`: the procedure `/kogut` follows, covering the parts that need judgement.
 - `scripts/`: the deterministic half, meaning collection, policy and every action. `signals.jq` holds the rules that need no judgement, `issues.jq` decides what happens to each kogut issue, and `releases.sh` reads what a lockfile newly locks and when npm published it.
-- `kogut.config.json`: watched repositories, this one included, their local clones, the policy numbers and the App's id. `policy.read_as` says whom the scripts read GitHub as: `owner` (the default) or `app`.
+- `kogut.config.json`: watched repositories, this one included, their local clones (relative to this clone's main working copy, so one config fits every machine that keeps them side by side), the policy numbers and the App's id. `policy.read_as` says whom the scripts read GitHub as: `owner` (the default) or `app`.
 - `.claude/settings.json`: what the agent may run without asking, and what it may never run.
 - `.env`: one Discord webhook per repository, plus an optional one, `DISCORD_WEBHOOK_SUMMARY`, for the daily summary (see `.env.example`). It is gitignored and the model may not read it; only `scripts/notify.sh` does. A repository without a webhook has no channel yet, and the digest skips it and says so.
 - `~/.config/kogut/kogut-agent.private-key.pem`: the App's private key, outside the repository. The model may not read it; only `kogut_app_jwt` in `scripts/lib.sh` does, to ask GitHub for a token (`kogut_app_token` to write, `kogut_app_read_token` to read) or whether the App is installed (`kogut_app_missing`). `scripts/app.sh` registers the App and checks its installation.

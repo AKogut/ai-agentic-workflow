@@ -27,12 +27,12 @@
     }
   },
   "repos": [
-    { "name": "ai-agentic-workflow", "path": "~/GitHub/ai-agentic-workflow" },
-    { "name": "ai-flaky-test-triage", "path": "~/GitHub/ai-flaky-test-triage" },
-    { "name": "ephemeral-k8s-test-envs", "path": "~/GitHub/ephemeral-k8s-test-envs" },
-    { "name": "flakemetry", "path": "~/GitHub/flakemetry" },
-    { "name": "mobile-task-manager-automation", "path": "~/GitHub/mobile-task-manager-automation" },
-    { "name": "playwright-ecommerce-framework", "path": "~/GitHub/playwright-ecommerce-framework" },
-    { "name": "restful-booker-api-testing", "path": "~/GitHub/restful-booker-api-testing" }
+    { "name": "ai-agentic-workflow", "path": "." },
+    { "name": "ai-flaky-test-triage", "path": "../ai-flaky-test-triage" },
+    { "name": "ephemeral-k8s-test-envs", "path": "../ephemeral-k8s-test-envs" },
+    { "name": "flakemetry", "path": "../flakemetry" },
+    { "name": "mobile-task-manager-automation", "path": "../mobile-task-manager-automation" },
+    { "name": "playwright-ecommerce-framework", "path": "../playwright-ecommerce-framework" },
+    { "name": "restful-booker-api-testing", "path": "../restful-booker-api-testing" }
   ]
 }

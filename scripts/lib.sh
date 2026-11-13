@@ -102,11 +102,41 @@ kogut_settled_digest() {
   printf '%s\n' "$digest"
 }
 
-# Local clone of a configured repository, with ~ expanded.
+# kogut's own main working copy, also when a script runs from one of its
+# worktrees, whose own root sits somewhere else.
+kogut_main_root() {
+  local common
+  common="$(git -C "$KOGUT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ "$(basename "$common")" = ".git" ]; then
+    dirname "$common"
+  else
+    echo "$KOGUT_ROOT"
+  fi
+}
+
+# Local clone of a configured repository. A path that starts with ~ is under the
+# home directory and one that starts with / is as written. Any other path is
+# relative to kogut's main working copy, so one config fits every machine that
+# keeps the repositories side by side, whatever their folder is called.
 kogut_repo_path() {
-  local p
+  local p dir
   p="$(jq -r --arg r "$1" '.repos[] | select(.name == $r) | .path' "$KOGUT_CONFIG")"
-  echo "${p/#\~/$HOME}"
+  case "$p" in
+    \~ | \~/*) echo "${p/#\~/$HOME}" ;;
+    /*) echo "$p" ;;
+    *)
+      dir="$(kogut_main_root)"
+      while :; do
+        case "$p" in
+          ./*) p="${p#./}" ;;
+          ../*) dir="$(dirname "$dir")" p="${p#../}" ;;
+          ..) dir="$(dirname "$dir")" p="." ;;
+          *) break ;;
+        esac
+      done
+      if [ "$p" = "." ] || [ -z "$p" ]; then echo "$dir"; else echo "$dir/$p"; fi
+      ;;
+  esac
 }
 
 # Default branch of a configured repository: the local clone's origin/HEAD, or
