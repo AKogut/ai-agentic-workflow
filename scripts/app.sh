@@ -5,7 +5,8 @@
 #   ./scripts/app.sh manifest              # opens the form that registers the App
 #   ./scripts/app.sh convert <code>        # stores the App after GitHub redirects back
 #   ./scripts/app.sh import <id> [<pem>]   # stores an App registered by hand
-#   ./scripts/app.sh check                 # mints a token for every watched repository
+#   ./scripts/app.sh check                 # mints a token for every watched repository,
+#                                          # and names the ones it is not installed on yet
 #
 # Registration uses GitHub's manifest flow. The form carries every setting, the
 # owner only confirms it, and GitHub redirects to the homepage with ?code=… in
@@ -133,21 +134,29 @@ EOF
 
   check)
     [ -n "$(kogut_app_id)" ] || die "$slug is not registered: run ./scripts/app.sh manifest"
-    failed=0
+    # A repository the App is not installed on yet, such as one new to kogut, is
+    # shown with the way to install it and does not fail the check: the scripts
+    # that run over every repository skip it. Any other refusal fails.
+    failed=0 first="" missing_on=""
     while IFS= read -r repo; do
       if token="$(kogut_app_token "$repo" 2>/dev/null)" && [ -n "$token" ]; then
         echo "ok    $repo"
+        [ -n "$first" ] || first="$repo"
+      elif kogut_app_missing "$repo" >/dev/null; then
+        echo "none  $repo → $slug is not installed there yet"
+        missing_on="$missing_on $repo"
       else
         echo "FAIL  $repo → $slug is not installed there, or the key does not match"
         failed=1
       fi
     done < <(kogut_repos)
+    [ -z "$missing_on" ] || echo "to install it on$missing_on: https://github.com/apps/$slug/installations/new"
     bot="$(kogut_app_bot)"
     echo "acts as $bot (user id $(gh api "users/$bot" --jq .id 2>/dev/null || echo unknown))"
-    # What the owner has granted the installation. A permission added in the
-    # App's settings counts only once the owner accepts it on the installation.
-    first="$(kogut_repos | head -n 1)"
-    if granted="$(curl -fsS -H "Authorization: Bearer $(kogut_app_jwt)" -H 'Accept: application/vnd.github+json' \
+    # What the owner has granted the installation, read on a repository it is
+    # installed on. A permission added in the App's settings counts only once the
+    # owner accepts it on the installation.
+    if [ -n "$first" ] && granted="$(curl -fsS -H "Authorization: Bearer $(kogut_app_jwt)" -H 'Accept: application/vnd.github+json' \
       "https://api.github.com/repos/$(kogut_owner)/$first/installation" | jq -c '.permissions')"; then
       echo "granted: $(jq -r 'to_entries | map("\(.key): \(.value)") | join(", ")' <<<"$granted")"
       missing="$(jq -r --argjson want "$app_permissions" '. as $have | $want | to_entries

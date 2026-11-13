@@ -26,6 +26,7 @@
     }
   },
   "repos": [
+    { "name": "ai-agentic-workflow", "path": "~/GitHubPersonal/ai-agentic-workflow" },
     { "name": "ai-flaky-test-triage", "path": "~/GitHubPersonal/ai-flaky-test-triage" },
     { "name": "ephemeral-k8s-test-envs", "path": "~/GitHubPersonal/ephemeral-k8s-test-envs" },
     { "name": "flakemetry", "path": "~/GitHubPersonal/flakemetry" },

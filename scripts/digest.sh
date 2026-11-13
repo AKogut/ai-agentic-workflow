@@ -9,8 +9,10 @@
 #
 #   ./scripts/digest.sh [--dry-run] [repo ...]
 #
-# --dry-run prints the reports and the summary, and posts nothing. A run that
-# names repositories posts no summary, since the summary is of every repository.
+# --dry-run prints the reports and the summary, posts nothing, and leaves .env
+# alone. A real run skips, and says so, a repository with no webhook in .env.
+# A run that names repositories posts no summary, since the summary is of every
+# repository.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -47,11 +49,22 @@ reports="$(jq -c -f "$KOGUT_ROOT/scripts/digest.jq" <<<"$input")"
 # Its own outbox, so a digest cannot send or overwrite a report a /kogut run wrote.
 export KOGUT_OUTBOX="$KOGUT_ROOT/.kogut/digest"
 mkdir -p "$KOGUT_OUTBOX"
+# The repositories with a webhook in .env. One without has no channel yet, such as
+# a repository new to kogut, and is skipped with a line that says so; a webhook that
+# is set but fails still fails the digest.
+channels=""
+if [ "$dry_run" = false ]; then
+  channels="$("$KOGUT_ROOT/scripts/notify.sh" --channels </dev/null)" || die "the webhooks in .env cannot be read; no digest was posted"
+fi
 failed=""
 while IFS=$'\t' read -r repo status; do
   if [ "$dry_run" = true ]; then
     echo "--- $repo ($status)"
     jq -r --arg r "$repo" '.[] | select(.name == $r) | .text' <<<"$reports"
+    continue
+  fi
+  if ! grep -qxF "$repo" <<<"$channels"; then
+    echo "$repo: not posted, it has no Discord webhook in .env yet (see .env.example)"
     continue
   fi
   jq -r --arg r "$repo" '.[] | select(.name == $r) | .text' <<<"$reports" >"$KOGUT_OUTBOX/$repo.md"

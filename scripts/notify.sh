@@ -5,13 +5,17 @@
 #   ./scripts/notify.sh <repo> <red|yellow|green>      # sends .kogut/outbox/<repo>.md
 #   ./scripts/notify.sh --summary <red|yellow|green>   # sends .kogut/outbox/summary.md
 #   ./scripts/notify.sh --check                        # checks every webhook, posts nothing
+#   ./scripts/notify.sh --channels                     # names the repositories with a webhook
 #
 # Webhook URLs come from .env (DISCORD_WEBHOOK_<REPO_IN_UPPER_SNAKE_CASE>, and
 # DISCORD_WEBHOOK_SUMMARY for the summary) and are never printed. The summary
 # channel is optional: without its webhook the summary is skipped with one line,
 # which is not a failure. Mentions are switched off, so text quoted from a PR
 # cannot ping anyone. A sent report is moved to .kogut/sent/. digest.sh sets
-# KOGUT_OUTBOX to send from an outbox of its own.
+# KOGUT_OUTBOX to send from an outbox of its own. A repository whose webhook is
+# not set has no channel yet: --check shows it without failing, and --channels
+# leaves it out, so digest.sh can skip it and say so. A webhook that is set but
+# wrong still fails.
 set -euo pipefail
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -24,17 +28,17 @@ command -v curl >/dev/null || die "curl is not installed"
 # snake case, or SUMMARY for the summary channel.
 webhook_key() { printf 'DISCORD_WEBHOOK_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
 
-# Reads a webhook from .env without sourcing it (that would run whatever the
-# file contains). Prints nothing when the variable is not set.
+# Reads a channel's webhook from .env without sourcing it (that would run
+# whatever the file contains). Prints nothing when it is not set.
 webhook_value() {
-  grep -E "^$1=" "$env_file" | tail -n 1 | cut -d= -f2- | tr -d "\"' " || true
+  grep -E "^$(webhook_key "$1")=" "$env_file" | tail -n 1 | cut -d= -f2- | tr -d "\"' " || true
 }
 
 # A channel's webhook. Refuses one that is not set or is not a Discord webhook.
 webhook_for() {
   local key url
   key="$(webhook_key "$1")"
-  url="$(webhook_value "$key")"
+  url="$(webhook_value "$1")"
   [ -n "$url" ] || die "$key is not set in .env"
   [[ "$url" =~ ^https://(discord|discordapp)\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$ ]] ||
     die "$key in .env is not a Discord webhook URL"
@@ -44,9 +48,20 @@ webhook_for() {
 resp="$(mktemp)"
 trap 'rm -f "$resp"' EXIT
 
+if [ "${1:-}" = "--channels" ]; then
+  while IFS= read -r repo; do
+    [ -z "$(webhook_value "$repo")" ] || echo "$repo"
+  done < <(kogut_repos)
+  exit 0
+fi
+
 if [ "${1:-}" = "--check" ]; then
   failed=0
   while IFS= read -r repo; do
+    if [ -z "$(webhook_value "$repo")" ]; then
+      echo "none  $repo → no channel yet: $(webhook_key "$repo") is not set in .env"
+      continue
+    fi
     if ! url="$(webhook_for "$repo")"; then
       failed=1
       continue
@@ -61,14 +76,14 @@ if [ "${1:-}" = "--check" ]; then
   done < <(
     kogut_repos
     # The summary channel is optional, so its webhook is checked only when set.
-    [ -z "$(webhook_value "$(webhook_key summary)")" ] || echo summary
+    [ -z "$(webhook_value summary)" ] || echo summary
   )
-  [ -n "$(webhook_value "$(webhook_key summary)")" ] ||
+  [ -n "$(webhook_value summary)" ] ||
     echo "skip  summary → $(webhook_key summary) is not set, so no summary is posted"
   exit "$failed"
 fi
 
-[ $# -eq 2 ] || die "usage: notify.sh <repo> <red|yellow|green> | --summary <red|yellow|green> | --check"
+[ $# -eq 2 ] || die "usage: notify.sh <repo> <red|yellow|green> | --summary <red|yellow|green> | --check | --channels"
 # For the summary, "repo" names the summary channel and its outbox file.
 repo="$1" status="$2" summary=false
 if [ "$repo" = --summary ]; then
@@ -83,7 +98,7 @@ case "$status" in
   green) color=3066993 emoji="🟢" ;;
   *) die "status must be red, yellow or green: $status" ;;
 esac
-if [ "$summary" = true ] && [ -z "$(webhook_value "$(webhook_key summary)")" ]; then
+if [ "$summary" = true ] && [ -z "$(webhook_value summary)" ]; then
   echo "summary not sent: $(webhook_key summary) is not set in .env"
   exit 0
 fi

@@ -20,7 +20,9 @@
 # The owner approves each call, so run it with --dry-run first: that prints the
 # PR text and the diff, and stops. A fix that changes .github/workflows/ needs
 # --workflows: a workflow on the PR branch runs with the repository's secrets
-# before anyone reviews it, and the owner should see that in the prompt.
+# before anyone reviews it, and the owner should see that in the prompt. A fix
+# that changes a .claude/settings.json is refused, in kogut's own repository as in
+# any other: what an agent may run without asking is the owner's to set, by hand.
 #
 # Before anything leaves the machine, the changed lines and the PR text are
 # scanned with gitleaks. The commit is built through GitHub's Git database API
