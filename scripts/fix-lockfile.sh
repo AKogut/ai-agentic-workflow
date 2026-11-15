@@ -82,7 +82,11 @@ case "$manager" in
     want="$(jq -r '.packageManager // empty' "$project/package.json" 2>/dev/null)"
     want="${want%%+*}"
     [[ "$want" == pnpm@* ]] || die "$dir/package.json names no pnpm version in packageManager"
-    [ "pnpm@$(pnpm --version)" = "$want" ] || die "the repository wants $want, but pnpm here is $(pnpm --version)"
+    # Asked where the install runs: through corepack, pnpm's version comes from
+    # the packageManager nearest the current directory, not from kogut's root.
+    have="$(run pnpm --version || true)"
+    [ -n "$have" ] || die "no pnpm here; corepack enable pnpm provides the version packageManager names"
+    [ "pnpm@$have" = "$want" ] || die "the repository wants $want, but pnpm in $dir is $have"
     run pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile --reporter=append-only
     ;;
   npm)
