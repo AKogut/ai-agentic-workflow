@@ -1557,6 +1557,32 @@ check "the other repositories still get their merge and their digest" \
   '([.out | scan("merged [a-z0-9-]+ #1")] | length) == '"$others"' and (.out | contains("merged ai-agentic-workflow") | not)
    and ([.curl | scan("webhooks/[0-9]+/test[?]wait=true")] | length) == '"$others"'
    and ([.out | scan("sent to Discord: [a-z0-9-]+")] | length) == '"$others" "$daily"
+daily_at() { # the local time, then daily.sh's arguments; adds the day it records as ran_on
+  local at="$1" out
+  shift
+  out="$(KOGUT_LOCAL_NOW="$at" self_run "$self_dir/scripts/daily.sh" "$@")"
+  jq -c --arg d "$(cat "$self_dir/.kogut/daily-last-run" 2>/dev/null)" '. + {ran_on: $d}' <<<"$out"
+}
+quiet='.status == 0 and .out == "" and .gh == "" and .curl == ""'
+rm -f "$self_dir/.kogut/daily-last-run"
+check "a start before the time does nothing, and says nothing" \
+  "$quiet and .ran_on == \"\"" "$(daily_at "2030-01-02 08:59" --catch-up 09:00)"
+check "the first start at or after the time runs the job, and records the day" \
+  '.status == 0 and (.out | startswith("--- daily run, 2030-01-02 09:35") and contains("sent to Discord")) and .ran_on == "2030-01-02"' \
+  "$(daily_at "2030-01-02 09:35" --catch-up 09:00)"
+check "a later start on the same day does nothing" \
+  "$quiet and .ran_on == \"2030-01-02\"" "$(daily_at "2030-01-02 23:59" --catch-up 09:00)"
+check "the next day's first start after the time runs it again" \
+  '.status == 0 and (.out | contains("sent to Discord")) and .ran_on == "2030-01-03"' \
+  "$(daily_at "2030-01-03 09:00" --catch-up 09:00)"
+touch "$self_dir/.kogut/daily-run-now"
+check "a run the owner asked for goes ahead whatever the time and the day's run say" \
+  '.status == 0 and (.out | contains("sent to Discord"))' "$(daily_at "2030-01-03 07:00" --catch-up 09:00)"
+check "and only once" \
+  "$quiet" "$(daily_at "2030-01-03 07:01" --catch-up 09:00)"
+check "a time that is not HH:MM fails before anything runs" \
+  '.status == 1 and (.out | contains("the time must be HH:MM: 9am")) and .gh == ""' \
+  "$(daily_at "2030-01-03 10:00" --catch-up 9am)"
 check "the digest renders it without posting, and a dry run leaves .env alone" \
   '.status == 0 and (.out | contains("--- ai-agentic-workflow (yellow)")) and (.curl | contains("webhooks") | not)' \
   "$(self_run "$self_dir/scripts/digest.sh" --dry-run)"

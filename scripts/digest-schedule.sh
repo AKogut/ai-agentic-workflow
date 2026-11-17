@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Puts the daily job on a schedule with launchd, in the owner's login session.
-# A run missed while the Mac sleeps happens when it wakes; one missed while it is
-# off does not. The job runs scripts/daily.sh from this working copy, so it
+# launchd makes up a run missed while the Mac sleeps when it wakes, but never one
+# missed while it is off, so it also starts the job at login and every hour, and
+# `daily.sh --catch-up` runs it once a day, at the time given or at the first
+# start after it. The job runs scripts/daily.sh from this working copy, so it
 # follows the branch checked out here, and writes to .kogut/digest.log.
 #
 #   ./scripts/digest-schedule.sh install [HH:MM]   # every day, 09:00 by default
-#   ./scripts/digest-schedule.sh run               # once, now
+#   ./scripts/digest-schedule.sh run               # once, now, even if it ran today
 #   ./scripts/digest-schedule.sh status
 #   ./scripts/digest-schedule.sh uninstall
 set -euo pipefail
@@ -38,12 +40,16 @@ case "${1:-}" in
   <array>
     <string>/bin/bash</string>
     <string>$KOGUT_ROOT/scripts/daily.sh</string>
+    <string>--catch-up</string>
+    <string>$at</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key><integer>$hour</integer>
     <key>Minute</key><integer>$minute</integer>
   </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>3600</integer>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$path</string>
@@ -57,16 +63,24 @@ PLIST
     plutil -lint "$plist" >/dev/null || die "the plist did not come out valid: $plist"
     launchctl bootout "$domain/$label" 2>/dev/null || true
     launchctl bootstrap "$domain" "$plist"
-    echo "the daily job runs every day at $at, and logs to $log"
+    echo "the daily job runs every day at $at, or at login or within the hour when the Mac was off then, and logs to $log"
+    echo "if today's run is due and has not happened, it starts now"
     ;;
   run)
-    launchctl kickstart "$domain/$label"
+    asked="$KOGUT_ROOT/.kogut/daily-run-now"
+    mkdir -p "$(dirname "$asked")"
+    touch "$asked"
+    launchctl kickstart "$domain/$label" || {
+      rm -f "$asked"
+      die "launchd did not start the job; is it installed?"
+    }
     echo "started; it logs to $log"
     ;;
   status)
     if launchctl print "$domain/$label" >/dev/null 2>&1; then
       echo "installed: $plist"
       launchctl print "$domain/$label" | grep -E '^[[:space:]]*(state|last exit code|runs) =' || true
+      echo "last day it ran: $(cat "$KOGUT_ROOT/.kogut/daily-last-run" 2>/dev/null || echo "none recorded")"
     else
       echo "not installed"
     fi
