@@ -790,6 +790,18 @@ check "a download refused with a 4xx is not an outage" \
 check "a kind download that fails its checksum reads as external, from the log" \
   'all(.[]; . == {kind: "external", signature: "kind-download-corrupt"})' \
   "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": [], "log": "sha256sum: WARNING: 1 computed checksum did NOT match\nkind-linux-amd64: FAILED\n"}]}') $(cause_of '{"jobs": [{"errors": [], "log": "sha256sum: '"'"'standard input'"'"': no properly formatted checksum lines found\n"}]}')")"
+# xcodebuild prints destinations as { a, b }, which bash 3.2 brace-expands
+# inside "$(...)" even within single quotes, so these inputs are set outside one.
+sim_lost='{"jobs": [{"errors": ["Process completed with exit code 70."], "log": "[2026-11-19 11:08:21 +0000] Status=4294967295, isTerminal=YES, Elapsed=02:11.\n\tFinished\n\n##[group]Run npm run ios:test\nxcodebuild: error: Unable to find a device matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, id:A3D77CD3-CFC6-4299-9E39-0DEA239429FA }\n\n\tThe requested device could not be found because no available devices matched the request.\n"}]}'
+sim_missing='{"jobs": [{"errors": [], "log": "xcodebuild: error: Unable to find a device matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, id:A3D77CD3-CFC6-4299-9E39-0DEA239429FA }\n"}]}'
+sim_by_name='{"jobs": [{"errors": [], "log": "Status=4294967295, isTerminal=YES, Elapsed=02:11.\nxcodebuild: error: Unable to find a device matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, OS:26.5, name:iPhone 99 }\n"}]}'
+sim_boot_only='{"jobs": [{"errors": [], "log": "Status=4294967295, isTerminal=YES, Elapsed=02:11.\nTest Suite All tests failed\n"}]}'
+check "a simulator that failed to boot and then vanished reads as infra, from the log" \
+  '. == {kind: "infra", signature: "ios-simulator-boot-failed"}' \
+  "$(cause_of "$sim_lost")"
+check "a missing simulator without a failed boot, by name, or a failed boot alone is unknown" \
+  'length == 3 and all(.[]; . == {kind: "unknown", signature: null})' \
+  "$(jq -cs . <<<"$(cause_of "$sim_missing") $(cause_of "$sim_by_name") $(cause_of "$sim_boot_only")")"
 check "the answer carries no text from the log" \
   'keys == ["kind", "signature"]' \
   "$(cause_of '{"jobs": [{"errors": ["Bad credentials - https://docs.github.com/rest"], "log": "something secret\n"}]}')"
