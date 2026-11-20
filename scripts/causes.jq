@@ -23,6 +23,12 @@ def signatures: [
   # mobile Appium E2E, 41474808279: android-emulator-runner gave up.
   {name: "android-emulator-boot-timeout", kind: "infra", in: "errors",
    pattern: "^Timeout waiting for emulator to boot\\.$"},
+  # mobile Nightly E2E, 44511338793: `simctl bootstatus` ended the boot with
+  # status 4294967295, and xcodebuild then found no simulator with the UDID the
+  # job had just picked. Both are needed: a destination that names no simulator
+  # on a booted runner is the workflow's own mistake.
+  {name: "ios-simulator-boot-failed", kind: "infra", in: "log",
+   pattern: "Status=4294967295, isTerminal=YES[\\s\\S]*?xcodebuild: error: Unable to find a device matching the provided destination specifier:\\n\\s*\\{ platform:iOS Simulator, id:[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12} \\}"},
   # mobile Nightly E2E, 41457905719: sdkmanager got a broken system image.
   {name: "android-sdk-corrupt-download", kind: "infra", in: "log",
    pattern: "An error occurred while preparing SDK package .*: Error reading Zip content"},
