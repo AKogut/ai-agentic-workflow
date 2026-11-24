@@ -176,6 +176,50 @@
             "kind": "unknown",
             "signature": null
           }
+        },
+        {
+          "id": 113,
+          "name": "pages-missing",
+          "path": ".github/workflows/pages-missing.yml",
+          "state": "active",
+          "dispatchable": true,
+          "cause": {
+            "kind": "infra",
+            "signature": "pages-artifact-missing"
+          }
+        },
+        {
+          "id": 114,
+          "name": "pages-retried",
+          "path": ".github/workflows/pages-retried.yml",
+          "state": "active",
+          "dispatchable": true,
+          "cause": {
+            "kind": "infra",
+            "signature": "pages-artifact-duplicate"
+          }
+        },
+        {
+          "id": 115,
+          "name": "pages-dispatched",
+          "path": ".github/workflows/pages-dispatched.yml",
+          "state": "active",
+          "dispatchable": true,
+          "cause": {
+            "kind": "infra",
+            "signature": "pages-artifact-missing"
+          }
+        },
+        {
+          "id": 116,
+          "name": "pages-not-startable",
+          "path": ".github/workflows/pages-not-startable.yml",
+          "state": "active",
+          "dispatchable": false,
+          "cause": {
+            "kind": "infra",
+            "signature": "pages-artifact-missing"
+          }
         }
       ],
       "runs": {
@@ -821,6 +865,113 @@
             "created_at": "2026-10-20T08:00:00Z",
             "head_sha": "older",
             "url": "https://github.com/example/r/actions/runs/2003"
+          }
+        ],
+        "113": [
+          {
+            "id": 1131,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-30T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1131"
+          },
+          {
+            "id": 1132,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-29T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1132"
+          }
+        ],
+        "114": [
+          {
+            "id": 1141,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-30T08:00:00Z",
+            "run_attempt": 2,
+            "head_sha": "head000",
+            "triggered_by": "kogut-agent[bot]",
+            "url": "https://github.com/example/r/actions/runs/1141"
+          },
+          {
+            "id": 1142,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-29T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1142"
+          }
+        ],
+        "115": [
+          {
+            "id": 1151,
+            "event": "workflow_dispatch",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-30T09:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "kogut-agent[bot]",
+            "url": "https://github.com/example/r/actions/runs/1151"
+          },
+          {
+            "id": 1152,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-30T08:00:00Z",
+            "run_attempt": 2,
+            "head_sha": "head000",
+            "triggered_by": "kogut-agent[bot]",
+            "url": "https://github.com/example/r/actions/runs/1152"
+          },
+          {
+            "id": 1153,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-29T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1153"
+          }
+        ],
+        "116": [
+          {
+            "id": 1161,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "failure",
+            "created_at": "2026-10-30T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1161"
+          },
+          {
+            "id": 1162,
+            "event": "schedule",
+            "status": "completed",
+            "conclusion": "success",
+            "created_at": "2026-10-29T08:00:00Z",
+            "run_attempt": 1,
+            "head_sha": "head000",
+            "triggered_by": "example",
+            "url": "https://github.com/example/r/actions/runs/1162"
           }
         ]
       },

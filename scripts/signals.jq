@@ -775,10 +775,20 @@ def health($runs):
 # A run on an older commit says nothing about the current one, and GitHub retries
 # nothing older than 30 days, so then a workflow that can be started by hand runs
 # again at the head, once per head.
+# A failed Pages deploy is never retried: a retry uploads a second artifact of the
+# same name, which actions/deploy-pages refuses, so only a fresh run can deploy.
+# It is started by hand at the head, once per head, even after a retry someone
+# made already, and a workflow that cannot be started waits for its next run.
+def fresh_run_only: ["pages-artifact-missing", "pages-artifact-duplicate"];
+
 def ci_action($w; $runs; $head_sha; $app; $p):
   $w.health as $h | $h.latest as $run
   | [$runs[] | select(.head_sha == $head_sha and (.triggered_by // "" | is_app($app)))] as $mine
   | if $head_sha == null or $run == null or any($runs[]; .status != "completed") then null
+    elif ($w.cause.signature // "" | IN(fresh_run_only[])) then
+      (if $w.dispatchable and ([$mine[] | select(.event == "workflow_dispatch")] == []) then
+         {name: "dispatch", reason: "a Pages deploy failed (\($w.cause.signature)), and only a fresh run can deploy: a retry adds a second artifact of the same name"}
+       else null end)
     elif $run.head_sha == $head_sha and ($run.created_at | days_since) < 30 then
       (if ($run.run_attempt // 1) >= 2 then null
        elif $h.streak < 3 then {name: "rerun", reason: "failed on the current head and not retried yet"}
