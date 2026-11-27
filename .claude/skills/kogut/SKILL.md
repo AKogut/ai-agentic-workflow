@@ -114,13 +114,13 @@ Send a command with `./scripts/dependabot-command.sh <repo> <n> <rebase|recreate
 **Running workflows.** A red or disabled workflow's `action` is what kogut may run for it, with its `reason`. Code decides when one applies:
 
 - `rerun`: the latest run failed on the current head, has not been retried, and the workflow has failed fewer than 3 times in a row, or fewer than `policy.infra_retry_limit` times when `cause.kind` is `infra`. It retries the failed jobs once. A `credentials` cause is never retried or started, because a retry cannot fix a token.
-- `dispatch`: the latest run was on an older commit, or is too old for GitHub to retry, and the workflow can be started by hand. It runs the workflow at the head of the default branch, once per head. A workflow with a cron and `cancel-in-progress` waits until the head has been on the default branch for a day, because its schedule would cancel the run; `held` says so, and the scheduled run usually settles it first.
+- `dispatch`: the latest run was on an older commit, or is too old for GitHub to retry, and the workflow can be started by hand. It runs the workflow at the head of the default branch, once per head. A workflow with a cron and `cancel-in-progress` waits until the head has been on the default branch for a day, because its schedule would cancel the run; `held` says so, and the scheduled run usually settles it first. A failed Pages deploy (`pages-artifact-missing`, `pages-artifact-duplicate`) gets `dispatch` and never `rerun`, even on the current head and after a retry: a retry uploads a second artifact of the same name, which `actions/deploy-pages` refuses.
 - `enable`: GitHub disabled the workflow after 60 days without activity.
 
 Run it with `./scripts/run-workflow.sh <repo> <path> <rerun|dispatch|enable>`, one workflow per call, where `<path>` is the workflow's `path`. The owner approves each call. Your diagnosis decides whether to use it:
 
 - `rerun` only for `flaky` and `infra` causes that a retry can clear, or for an `external` outage that is over. Never for a `regression` or a `dependency` failure: the retry fails the same way.
-- `dispatch` for a stale red: the result says nothing about the code as it is now.
+- `dispatch` for a stale red: the result says nothing about the code as it is now. And for a failed Pages deploy, which only a fresh run can pass.
 - `enable` whenever it is offered.
 
 The script collects the repository afresh and refuses an action the rules do not name; report its reason. The new run's result shows up in the next sweep, so report what kogut started rather than waiting for it.

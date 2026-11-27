@@ -6,7 +6,8 @@
 # and never the text, because a log is untrusted and must not reach a report.
 #
 #   credentials  GitHub refused a token: a retry cannot fix it
-#   infra        the runner or the toolchain failed: a retry can clear it
+#   infra        the runner or the toolchain failed: a retry can clear it, or a
+#                fresh run where signals.jq says a retry cannot (a Pages deploy)
 #   external     a service outside the repository failed
 #   unknown      nothing here explains it, which is the default
 #
@@ -55,7 +56,17 @@ def signatures: [
   # ephemeral Ephemeral environment, 42583637532 and 42583153204: helm/kind-action
   # downloaded something other than the binary or its checksum file.
   {name: "kind-download-corrupt", kind: "external", in: "log",
-   pattern: "kind-linux-[a-z0-9]+: FAILED|sha256sum: 'standard input': no properly formatted checksum lines found"}
+   pattern: "kind-linux-[a-z0-9]+: FAILED|sha256sum: 'standard input': no properly formatted checksum lines found"},
+  # playwright Smoke Run, 45407221729, and restful Report, 45401302163, half an
+  # hour apart: actions/deploy-pages did not find the artifact the same run had
+  # just uploaded, and both had passed the day before.
+  {name: "pages-artifact-missing", kind: "infra", in: "errors",
+   pattern: "^(Error: )?No artifacts named \"[^\"]+\" were found for this workflow run\\. Ensure artifacts are uploaded with actions/upload-artifact"},
+  # The same two runs, retried: the retry uploads its own artifact next to the
+  # first one, and deploy-pages refuses two of the same name, so a retry of a
+  # Pages deploy can never pass.
+  {name: "pages-artifact-duplicate", kind: "infra", in: "errors",
+   pattern: "^(Error: )?Multiple artifacts named \"[^\"]+\" were unexpectedly found for this workflow run\\. Artifact count is [0-9]+\\.$"}
 ];
 
 def job_cause:

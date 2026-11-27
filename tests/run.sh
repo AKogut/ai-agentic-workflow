@@ -802,6 +802,15 @@ check "a simulator that failed to boot and then vanished reads as infra, from th
 check "a missing simulator without a failed boot, by name, or a failed boot alone is unknown" \
   'length == 3 and all(.[]; . == {kind: "unknown", signature: null})' \
   "$(jq -cs . <<<"$(cause_of "$sim_missing") $(cause_of "$sim_by_name") $(cause_of "$sim_boot_only")")"
+check "a Pages deploy that cannot find its own artifact reads as infra, next to the generic error" \
+  '. == {kind: "infra", signature: "pages-artifact-missing"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Fetching artifact metadata failed. Is githubstatus.com reporting issues with API requests, Pages, or Actions? Please re-run the deployment at a later time.", "Error: No artifacts named \"github-pages\" were found for this workflow run. Ensure artifacts are uploaded with actions/upload-artifact@v4 or later."], "log": null}]}')"
+check "a retried Pages deploy that finds two artifacts reads as infra" \
+  '. == {kind: "infra", signature: "pages-artifact-duplicate"}' \
+  "$(cause_of '{"jobs": [{"errors": ["Error: Multiple artifacts named \"github-pages\" were unexpectedly found for this workflow run. Artifact count is 2."], "log": null}]}')"
+check "the generic deploy error alone, or the Pages words in a log, are unknown" \
+  'length == 2 and all(.[]; . == {kind: "unknown", signature: null})' \
+  "$(jq -cs . <<<"$(cause_of '{"jobs": [{"errors": ["Fetching artifact metadata failed. Is githubstatus.com reporting issues with API requests, Pages, or Actions? Please re-run the deployment at a later time."], "log": null}]}') $(cause_of '{"jobs": [{"errors": [], "log": "Error: No artifacts named \"github-pages\" were found for this workflow run. Ensure artifacts are uploaded with actions/upload-artifact@v4 or later.\n"}]}')")"
 check "the answer carries no text from the log" \
   'keys == ["kind", "signature"]' \
   "$(cause_of '{"jobs": [{"errors": ["Bad credentials - https://docs.github.com/rest"], "log": "something secret\n"}]}')"
@@ -840,6 +849,13 @@ c_check "a cron alone, cancel-in-progress alone, or neither does not hold a disp
 c_check "the hold is about dispatch: a retry on the head goes on, and a workflow that cannot start says nothing" \
   '(w("fresh"; "cron-cancel-on-head") | .action.name == "rerun" and .held == null)
      and (w("fresh"; "cron-cancel-not-startable") | .action == null and .held == null)'
+c_check "a failed Pages deploy is started afresh, never retried, and says why" \
+  'w("settled"; "pages-missing") | .action == {name: "dispatch", reason: "a Pages deploy failed (pages-artifact-missing), and only a fresh run can deploy: a retry adds a second artifact of the same name"}
+     and .held == null'
+c_check "a retry kogut made already does not use up the fresh run" \
+  'w("settled"; "pages-retried") | .action.name == "dispatch" and (.action.reason | contains("pages-artifact-duplicate"))'
+c_check "a Pages deploy is started once per head, and one that cannot be started waits" \
+  '[w("settled"; "pages-dispatched", "pages-not-startable") | .action] == [null, null]'
 check "the digest names a known cause next to a red workflow, and only a known one" \
   '(.[0].text | contains("[Nightly](https://example/run), 4 in a row: credentials (github-bad-credentials)"))
      and (.[1].text | contains("[Nightly](https://example/run), 4 in a row") and (contains("unknown") | not))' \
